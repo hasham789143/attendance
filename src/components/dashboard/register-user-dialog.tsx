@@ -25,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useAuth } from '../providers/auth-provider';
 
 export function RegisterUserDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -36,8 +35,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
   const [role, setRole] = useState<'viewer' | 'admin'>('viewer');
   const [loading, setLoading] = useState(false);
   
-  const { firestore } = useFirebase();
-  const { auth: mainAuth, user: adminUser } = useAuth(); // Use main auth context
+  const { firestore, auth } = useFirebase();
   const { toast } = useToast();
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -50,13 +48,17 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
       });
       return;
     }
+    if (!auth) {
+        toast({ variant: 'destructive', title: 'Auth Error', description: 'Firebase Auth is not available.' });
+        return;
+    }
     setLoading(true);
 
     try {
         // This is a simplified client-side approach.
         // A more robust solution would use a server-side function (e.g., Genkit flow)
         // to create users without affecting the admin's session.
-        const userCredential = await createUserWithEmailAndPassword(mainAuth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
         const userProfileData = {
@@ -77,13 +79,8 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
 
         // After creating the user, Firebase automatically signs in the new user.
         // We need to sign the admin back in. This is a workaround for the client-side limitation.
-        if (adminUser?.email) {
-            // This is a bit of a hack. A better solution is a server-side endpoint.
-            // We assume the admin's password is not available, so we can't fully re-sign in here.
-            // The AuthProvider should handle the user state correctly on the next reload.
-            // For now, we just close the dialog.
-        }
-
+        // A better solution is a server-side endpoint. For now, the user may need to re-login.
+        
         // Reset form and close dialog
         setName('');
         setRoll('');
@@ -169,7 +166,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
               <Label htmlFor="role" className="text-right">
                 Role
               </Label>
-                <Select onValueChange={(value) => setRole(value.toLowerCase() as 'viewer' | 'admin')} value={role}>
+                <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
                     <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
