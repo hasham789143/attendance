@@ -112,31 +112,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       const studentRecord = attendance.get(studentId);
       if(studentRecord && studentRecord.status !== 'absent') {
-          toast({ variant: 'destructive', title: 'Already Marked', description: 'You have already marked your attendance.' });
+          toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance.' });
           return false;
       }
 
       const now = new Date();
       let status: AttendanceStatus = 'present';
+      let minutesLate = 0;
 
       if(session.status === 'active_first' && session.firstScanCutoff) {
           if (now > session.firstScanCutoff) {
-            toast({ variant: 'destructive', title: 'Time Expired', description: 'The time to mark attendance has passed. You are marked absent.' });
-            const student = students.find(s => s.uid === studentId);
-            if (!student) return false;
-            
-             const newRecord: AttendanceRecord = { student, status: 'absent', timestamp: now, minutesLate: 0 };
-              const newAttendance = new Map(attendance);
-              newAttendance.set(studentId, newRecord);
-              setAttendance(newAttendance);
-            return false;
+              status = 'late';
+              minutesLate = Math.round((now.getTime() - session.firstScanCutoff.getTime()) / 60000);
           }
       }
       
       const student = students.find(s => s.uid === studentId);
       if (!student) return false;
 
-      const newRecord: AttendanceRecord = { student, status, timestamp: now, minutesLate: 0 };
+      const newRecord: AttendanceRecord = { student, status, timestamp: now, minutesLate };
       const newAttendance = new Map(attendance);
       newAttendance.set(studentId, newRecord);
       setAttendance(newAttendance);
@@ -149,8 +143,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   
   const generateSecondQrCode = useCallback(async () => {
     const presentCount = Array.from(attendance.values()).filter(r => r.status !== 'absent').length;
-    const absenceRate = ((students.length - presentCount) / students.length) * 100;
-    const classLengthMinutes = 120;
+    const absenceRate = students.length > 0 ? ((students.length - presentCount) / students.length) * 100 : 0;
+    const classLengthMinutes = 120; // Assuming a 2-hour class
 
     try {
       const result = await getOptimalQrDisplayTime({ absenceRate, classLengthMinutes });
@@ -169,19 +163,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const activateSecondQr = useCallback(() => {
     const { readableCode, qrCodeValue } = generateNewCode('second');
     
+    // Reset status for everyone who was present or late to absent for the second scan
     const newAttendance = new Map(attendance);
     newAttendance.forEach((record, studentId) => {
-      if (record.status !== 'absent') {
+      if (record.status === 'present' || record.status === 'late') {
         newAttendance.set(studentId, { 
-          student: record.student,
-          status: 'absent',
-          timestamp: null,
-          minutesLate: 0
+          ...record, // Keep original record details like student info
+          status: 'absent', // Mark as absent for the second round
+          timestamp: null, // Reset timestamp for second scan
+          minutesLate: 0,
         });
       }
     });
-    setAttendance(newAttendance);
 
+    setAttendance(newAttendance);
     setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
     toast({ title: 'Second Scan Activated', description: 'Students who left will be marked absent if they do not scan again.' });
   }, [toast, attendance]);
