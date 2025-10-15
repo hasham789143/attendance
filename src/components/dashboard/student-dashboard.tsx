@@ -4,7 +4,7 @@ import { useStore, AttendanceRecord } from '@/components/providers/store-provide
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, QrCode } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
@@ -16,7 +16,6 @@ export function StudentDashboard() {
   const [showScanner, setShowScanner] = useState(false);
   const { toast } = useToast();
   
-  // This state ensures the scanner component is only mounted on the client
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
@@ -32,7 +31,9 @@ export function StudentDashboard() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          const code = result.split(':')[1];
+          // The QR code value is expected to be in the format `prefix:code:timestamp`
+          const codeParts = result.split(':');
+          const code = codeParts.length > 1 ? codeParts[1] : result;
           markAttendance(userProfile.uid, code, { lat: latitude, lng: longitude });
           setIsLoading(false);
         },
@@ -49,7 +50,6 @@ export function StudentDashboard() {
   };
 
   const handleError = (error: Error) => {
-    // The scanner library can throw errors if camera access is denied or not found.
     if (error) {
        console.error('QR Scanner Error:', error);
        if (error.name === 'NotAllowedError') {
@@ -74,14 +74,17 @@ export function StudentDashboard() {
        setShowScanner(false);
     }
   }
-  
+
+  // This effect ensures that the camera stream is stopped when the component unmounts
+  // or when the scanner is hidden, preventing the camera light from staying on.
   useEffect(() => {
-    // This effect ensures that the camera stream is stopped when the component unmounts
-    // or when the scanner is hidden, preventing the camera light from staying on.
-    return () => {
-        setShowScanner(false);
+    if (!showScanner) {
+      const mediaStream = document.querySelector('video')?.srcObject as MediaStream;
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+      }
     }
-  }, []);
+  }, [showScanner]);
 
   const getStatusContent = (record?: AttendanceRecord) => {
     if (!record || record.status === 'absent') {
