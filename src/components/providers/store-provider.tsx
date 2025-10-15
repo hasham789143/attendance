@@ -4,9 +4,10 @@ import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, query, where, doc } from 'firebase/firestore';
-import { useCollection, useDoc, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
+import { useCollection, useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
+import { AttendanceSession } from '@/models/backend';
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
 type StudentLocation = { lat: number; lng: number };
@@ -81,7 +82,16 @@ function useStudents() {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  const { firestore } = useFirebase();
+  const { userProfile } = useAuth();
   const students = useStudents() || [];
+
+  const sessionDocRef = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return doc(firestore, 'sessions', 'current');
+  }, [firestore]);
+
+  const { data: dbSession } = useDoc<AttendanceSession>(sessionDocRef);
   
   const [session, setSession] = useState<Session>({
     status: 'inactive',
@@ -94,6 +104,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   });
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
 
+  // Effect to sync local state with Firestore session
+  useEffect(() => {
+    if (dbSession) {
+      const startTime = dbSession.createdAt ? new Date(dbSession.createdAt) : new Date();
+      const firstScanCutoff = new Date(startTime.getTime() + 10 * 60 * 1000);
+      const { readableCode } = parseQrCodeValue(dbSession.key);
+      setSession({
+        status: 'active_first', // Assuming 'active_first' for now
+        qrCodeValue: dbSession.key,
+        readableCode,
+        startTime,
+        firstScanCutoff,
+        lat: dbSession.lat,
+        lng: dbSession.lng,
+        secondScanTime: null, // these will be local state
+        secondScanReason: null,
+      });
+
+      // When a session is active, initialize attendance for all students
+      const newAttendance = new Map<string, AttendanceRecord>();
+      students.forEach(student => {
+        newAttendance.set(student.uid, { student, status: 'absent', timestamp: null, minutesLate: 0 });
+      });
+      setAttendance(newAttendance);
+
+    } else {
+      setSession({
+        status: 'inactive',
+        qrCodeValue: '',
+        readableCode: '',
+        startTime: null,
+        firstScanCutoff: null,
+        secondScanTime: null,
+        secondScanReason: null,
+      });
+      setAttendance(new Map());
+    }
+  }, [dbSession, students]);
+
   
   const generateNewCode = (prefix: string) => {
     const readableCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -101,43 +150,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { readableCode, qrCodeValue };
   };
 
+  const parseQrCodeValue = (qrValue: string) => {
+    const parts = qrValue.split(':');
+    return { prefix: parts[0], readableCode: parts[1], timestamp: parts[2] };
+  };
+
   const startSession = useCallback(() => {
     if (!navigator.geolocation) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
     }
+    if (!firestore || !userProfile || !sessionDocRef) return;
+
     navigator.geolocation.getCurrentPosition((position) => {
       const { latitude, longitude } = position.coords;
-      const startTime = new Date();
-      const firstScanCutoff = new Date(startTime.getTime() + 10 * 60 * 1000); // 10 minute grace period
-      const { readableCode, qrCodeValue } = generateNewCode('first');
-      setSession({
-        status: 'active_first',
-        qrCodeValue,
-        readableCode,
-        startTime,
-        firstScanCutoff,
-        secondScanTime: null,
-        secondScanReason: null,
+      const { qrCodeValue } = generateNewCode('first');
+      
+      const sessionData: AttendanceSession = {
+        key: qrCodeValue,
+        adminUid: userProfile.uid,
+        createdAt: new Date().toISOString(),
         lat: latitude,
-        lng: longitude
-      });
-      // Reset attendance
-      const newAttendance = new Map<string, AttendanceRecord>();
-      students.forEach(student => {
-        newAttendance.set(student.uid, { student, status: 'absent', timestamp: null, minutesLate: 0 });
-      });
-      setAttendance(newAttendance);
+        lng: longitude,
+      }
+
+      setDocumentNonBlocking(sessionDocRef, sessionData, {});
+      
       toast({ title: 'Session Started', description: 'Students can now mark their attendance.' });
     }, (error) => {
         toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
     });
-  }, [toast, students]);
+  }, [toast, firestore, userProfile, sessionDocRef]);
   
   const endSession = useCallback(() => {
-    setSession(prev => ({...prev, status: 'ended', qrCodeValue: '', readableCode: ''}));
+    if (!sessionDocRef) return;
+    deleteDocumentNonBlocking(sessionDocRef);
     toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
-  },[toast]);
+  },[toast, sessionDocRef]);
 
   const markAttendance = useCallback((studentId: string, code: string, location: StudentLocation): boolean => {
       if (!session.startTime || session.status === 'inactive' || session.status === 'ended') {
@@ -232,7 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast({ title: 'Second Scan Activated', description: 'Students who left will be marked absent if they do not scan again.' });
   }, [toast, attendance]);
   
-  // QR Code refresh interval
+  // QR Code refresh interval (local state update)
   useEffect(() => {
     if (session.status === 'active_first' || session.status === 'active_second') {
       const interval = setInterval(() => {
@@ -259,5 +308,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    
