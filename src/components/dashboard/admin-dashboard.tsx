@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock } from 'lucide-react';
+import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock, UserPlus } from 'lucide-react';
 import Image from 'next/image';
 import { useMemo } from 'react';
 import { Progress } from '../ui/progress';
+import { RegisterUserDialog } from './register-user-dialog';
 
 function QrCodeDisplay() {
   const { session } = useStore();
@@ -146,15 +147,22 @@ export function AdminDashboard() {
                 <h1 className="text-2xl font-bold font-headline">Admin Dashboard</h1>
                 <p className="text-muted-foreground">Manage attendance sessions and monitor students.</p>
             </div>
-            {session.status === 'inactive' || session.status === 'ended' ? (
-                <Button size="lg" onClick={startSession}>
-                    <PlayCircle className="mr-2 h-5 w-5" /> Start New Session
-                </Button>
-            ) : (
-                <Button size="lg" variant="destructive" onClick={endSession}>
-                    <StopCircle className="mr-2 h-5 w-5" /> End Session
-                </Button>
-            )}
+            <div className="flex items-center gap-2">
+                 <RegisterUserDialog>
+                    <Button size="lg" variant="outline">
+                        <UserPlus className="mr-2 h-5 w-5" /> Register New User
+                    </Button>
+                </RegisterUserDialog>
+                {session.status === 'inactive' || session.status === 'ended' ? (
+                    <Button size="lg" onClick={startSession}>
+                        <PlayCircle className="mr-2 h-5 w-5" /> Start New Session
+                    </Button>
+                ) : (
+                    <Button size="lg" variant="destructive" onClick={endSession}>
+                        <StopCircle className="mr-2 h-5 w-5" /> End Session
+                    </Button>
+                )}
+            </div>
         </div>
         
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
