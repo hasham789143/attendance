@@ -33,7 +33,7 @@ export function StudentDashboard() {
     if (!record || record.status === 'absent') {
       return (
         <div className="text-center">
-            <p className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></p>
+            <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
             <p className="text-muted-foreground">Enter the code from the screen to mark your attendance.</p>
         </div>
       );
@@ -41,7 +41,7 @@ export function StudentDashboard() {
     if (record.status === 'present') {
         return (
             <div className="text-center">
-                <p className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></p>
+                <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></div>
                 <p className="text-muted-foreground">Attendance recorded at {record.timestamp?.toLocaleTimeString()}.</p>
             </div>
         );
@@ -49,7 +49,7 @@ export function StudentDashboard() {
     if (record.status === 'late') {
         return (
             <div className="text-center">
-                <p className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></p>
+                <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></div>
                 <p className="text-muted-foreground">Recorded at {record.timestamp?.toLocaleTimeString()} ({record.minutesLate} minutes late).</p>
             </div>
         );
