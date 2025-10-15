@@ -2,10 +2,10 @@
 
 import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
 import { useToast } from '@/hooks/use-toast.tsx';
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, getDocs, Firestore } from 'firebase/firestore';
-import { useFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
 
@@ -46,7 +46,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
-  const [students, setStudents] = useState<UserProfile[]>([]);
+  
+  const studentsQuery = useMemoFirebase(() => {
+    if (userProfile?.role !== 'admin' || !firestore) return null;
+    return query(collection(firestore, 'users'), where('role', '==', 'viewer'));
+  }, [userProfile, firestore]);
+  
+  const { data: students = [] } = useCollection<UserProfile>(studentsQuery);
+  
   const [session, setSession] = useState<Session>({
     status: 'inactive',
     qrCodeValue: '',
@@ -58,17 +65,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   });
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
 
-  useEffect(() => {
-    if (userProfile?.role === 'admin' && firestore) {
-      const fetchUsers = async () => {
-        const usersCol = collection(firestore, 'users');
-        const userSnapshot = await getDocs(usersCol);
-        const userList = userSnapshot.docs.map(doc => doc.data() as UserProfile).filter(u => u.role === 'viewer');
-        setStudents(userList);
-      };
-      fetchUsers();
-    }
-  }, [userProfile, firestore]);
   
   const generateNewCode = (prefix: string) => {
     const readableCode = Math.random().toString(36).substring(2, 8).toUpperCase();

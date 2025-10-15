@@ -8,9 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useFirebase } from '@/firebase';
+import { useFirebase, setDocumentNonBlocking } from '@/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 
@@ -39,14 +39,16 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Create user profile in Firestore
-      await setDoc(doc(firestore, 'users', user.uid), {
+      const userProfileData = {
         uid: user.uid,
         name,
         roll,
         email,
         role: 'viewer', // Default role for new sign-ups
-      });
+      };
+
+      // Create user profile in Firestore using the non-blocking helper
+      setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, {});
       
       toast({ title: 'Registration Successful', description: 'Redirecting to your dashboard...'});
       router.push('/dashboard');

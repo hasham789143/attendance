@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useFirebase } from '@/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useMemo } from 'react';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -10,23 +10,18 @@ import { UserProfile } from '@/components/providers/auth-provider';
 
 export default function StudentsPage() {
   const { firestore } = useFirebase();
-  const [students, setStudents] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!firestore) return;
-
-    const fetchStudents = async () => {
-      setLoading(true);
-      const studentsQuery = query(collection(firestore, "users"), where("role", "==", "viewer"));
-      const querySnapshot = await getDocs(studentsQuery);
-      const studentList = querySnapshot.docs.map(doc => doc.data() as UserProfile);
-      setStudents(studentList.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')));
-      setLoading(false);
-    };
-
-    fetchStudents();
+  const studentsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, "users"), where("role", "==", "viewer"));
   }, [firestore]);
+
+  const { data: students, isLoading } = useCollection<UserProfile>(studentsQuery);
+  
+  const sortedStudents = useMemo(() => {
+    if (!students) return [];
+    return [...students].sort((a, b) => (a.roll || '').localeCompare(b.roll || ''));
+  }, [students]);
 
   return (
     <div>
@@ -37,7 +32,7 @@ export default function StudentsPage() {
           <CardDescription>A list of all students enrolled in the class.</CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {isLoading ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
@@ -51,7 +46,7 @@ export default function StudentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {students.map(student => (
+                {sortedStudents.map(student => (
                   <TableRow key={student.uid}>
                     <TableCell>
                       <Avatar>

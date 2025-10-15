@@ -3,8 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Auth, User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc, Firestore } from 'firebase/firestore';
-import { useFirebase } from '@/firebase';
+import { doc, Firestore } from 'firebase/firestore';
+import { useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 import { Loader2 } from 'lucide-react';
 
 // The shape of the user profile stored in Firestore
@@ -27,45 +27,25 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { auth, firestore, user: authUser, isUserLoading: isAuthLoading } = useFirebase();
   const router = useRouter();
-  const { auth, firestore } = useFirebase();
+
+  const userDocRef = useMemoFirebase(() => {
+    if (!firestore || !authUser) return null;
+    return doc(firestore, 'users', authUser.uid);
+  }, [firestore, authUser]);
+
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
+
+  const loading = isAuthLoading || (!!authUser && isProfileLoading);
 
   useEffect(() => {
-    if (!auth || !firestore) return;
-
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        const userDocRef = doc(firestore, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const profileData = userDoc.data() as UserProfile;
-          if (profileData.role === 'disabled') {
-            setUserProfile(null);
-            setUser(null);
-            await firebaseSignOut(auth);
-            router.replace('/login');
-          } else {
-            setUserProfile(profileData);
-          }
-        } else {
-          // If no profile, maybe they just registered.
-          // Or this is an error condition. For now, we clear the profile.
-          setUserProfile(null);
-        }
-      } else {
-        setUser(null);
-        setUserProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [auth, firestore, router]);
-
+    if (!loading && authUser && userProfile?.role === 'disabled') {
+      firebaseSignOut(auth);
+      router.replace('/login');
+    }
+  }, [loading, authUser, userProfile, auth, router]);
+  
   const logout = useCallback(async () => {
     if (auth) {
       await firebaseSignOut(auth);
@@ -81,8 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  // userProfile can be null if doc doesn't exist.
+  const profile = userProfile ? { ...userProfile, id: userProfile.uid } as UserProfile : null;
+
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, logout }}>
+    <AuthContext.Provider value={{ user: authUser, userProfile: profile, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );
