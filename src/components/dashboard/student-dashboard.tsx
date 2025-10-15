@@ -25,19 +25,26 @@ export function StudentDashboard() {
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
   const handleScan = (result: string) => {
-    if (result) {
-      // The QR data from the admin is in the format "prefix:readableCode:timestamp"
-      // We only need the readable code part.
-      const code = result.split(':')[1];
-      if (code && userProfile) {
-        setShowScanner(false);
-        setIsLoading(true);
-        // Simulate a short delay for UX
-        setTimeout(() => {
-          markAttendance(userProfile.uid, code);
+    if (result && userProfile) {
+      setShowScanner(false);
+      setIsLoading(true);
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const code = result.split(':')[1];
+          markAttendance(userProfile.uid, code, { lat: latitude, lng: longitude });
           setIsLoading(false);
-        }, 500);
-      }
+        },
+        (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Location Error',
+            description: 'Could not get your location. Please enable location services.',
+          });
+          setIsLoading(false);
+        }
+      );
     }
   };
 

@@ -6,8 +6,10 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { useAuth, UserProfile } from './auth-provider';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase } from '@/firebase';
+import { getDistance } from '@/lib/utils';
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
+type StudentLocation = { lat: number; lng: number };
 
 // Student is now UserProfile
 export type AttendanceRecord = {
@@ -27,6 +29,8 @@ export type Session = {
   firstScanCutoff: Date | null;
   secondScanTime: number | null;
   secondScanReason: string | null;
+  lat?: number;
+  lng?: number;
 };
 
 type StoreContextType = {
@@ -35,7 +39,7 @@ type StoreContextType = {
   students: UserProfile[];
   startSession: () => void;
   endSession: () => void;
-  markAttendance: (studentId: string, code: string) => boolean;
+  markAttendance: (studentId: string, code: string, location: StudentLocation) => boolean;
   generateSecondQrCode: () => Promise<void>;
   activateSecondQr: () => void;
 };
@@ -77,7 +81,7 @@ function useStudents() {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const students = useStudents();
+  const students = useStudents() || [];
   
   const [session, setSession] = useState<Session>({
     status: 'inactive',
@@ -98,25 +102,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const startSession = useCallback(() => {
-    const startTime = new Date();
-    const firstScanCutoff = new Date(startTime.getTime() + 10 * 60 * 1000); // 10 minute grace period
-    const { readableCode, qrCodeValue } = generateNewCode('first');
-    setSession({
-      status: 'active_first',
-      qrCodeValue,
-      readableCode,
-      startTime,
-      firstScanCutoff,
-      secondScanTime: null,
-      secondScanReason: null,
+    if (!navigator.geolocation) {
+      toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((position) => {
+      const { latitude, longitude } = position.coords;
+      const startTime = new Date();
+      const firstScanCutoff = new Date(startTime.getTime() + 10 * 60 * 1000); // 10 minute grace period
+      const { readableCode, qrCodeValue } = generateNewCode('first');
+      setSession({
+        status: 'active_first',
+        qrCodeValue,
+        readableCode,
+        startTime,
+        firstScanCutoff,
+        secondScanTime: null,
+        secondScanReason: null,
+        lat: latitude,
+        lng: longitude
+      });
+      // Reset attendance
+      const newAttendance = new Map<string, AttendanceRecord>();
+      students.forEach(student => {
+        newAttendance.set(student.uid, { student, status: 'absent', timestamp: null, minutesLate: 0 });
+      });
+      setAttendance(newAttendance);
+      toast({ title: 'Session Started', description: 'Students can now mark their attendance.' });
+    }, (error) => {
+        toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
     });
-    // Reset attendance
-    const newAttendance = new Map<string, AttendanceRecord>();
-    students.forEach(student => {
-      newAttendance.set(student.uid, { student, status: 'absent', timestamp: null, minutesLate: 0 });
-    });
-    setAttendance(newAttendance);
-    toast({ title: 'Session Started', description: 'Students can now mark their attendance.' });
   }, [toast, students]);
   
   const endSession = useCallback(() => {
@@ -124,7 +139,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
   },[toast]);
 
-  const markAttendance = useCallback((studentId: string, code: string): boolean => {
+  const markAttendance = useCallback((studentId: string, code: string, location: StudentLocation): boolean => {
       if (!session.startTime || session.status === 'inactive' || session.status === 'ended') {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
         return false;
@@ -132,6 +147,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       if (code.toUpperCase() !== session.readableCode) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you entered is incorrect.' });
+        return false;
+      }
+
+      if (session.lat && session.lng) {
+        const distance = getDistance({lat: session.lat, lng: session.lng}, location);
+        if (distance > 100) { // 100 meters
+            toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
+            return false;
+        }
+      } else {
+        toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
         return false;
       }
       
