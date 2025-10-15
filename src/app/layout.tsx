@@ -3,7 +3,6 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/components/providers/auth-provider';
-import { StoreProvider } from '@/components/providers/store-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { ToasterProvider } from '@/hooks/use-toast.tsx';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
@@ -29,7 +28,7 @@ export default function RootLayout({
         <ToasterProvider>
           <FirebaseClientProvider>
             <AuthProvider>
-              <StoreProvider>{children}</StoreProvider>
+              {children}
             </AuthProvider>
           </FirebaseClientProvider>
         </ToasterProvider>
