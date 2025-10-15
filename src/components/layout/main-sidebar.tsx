@@ -21,16 +21,36 @@ const studentNavItems = [
   { href: '/history', icon: History, label: 'My History' },
 ];
 
-export function MainSidebar({ className }: { className?: string }) {
+export function MainSidebar({ className, mobile = false }: { className?: string, mobile?: boolean }) {
   const pathname = usePathname();
   const { userProfile } = useAuth();
 
   const navItems = userProfile?.role === 'admin' ? adminNavItems : studentNavItems;
+  
+  if (mobile) {
+     return (
+        <nav className="grid gap-6 text-lg font-medium">
+             {navItems.map(item => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-4 px-2.5 text-muted-foreground hover:text-foreground',
+                  { 'text-foreground': pathname === item.href }
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </Link>
+            ))}
+        </nav>
+     )
+  }
 
   return (
-    <div className={cn('hidden border-r md:flex md:flex-col', className)}>
+    <div className={cn('hidden border-r bg-muted/40 md:block', className)}>
       <div className="flex h-full max-h-screen flex-col gap-2">
-        <div className="flex h-16 items-center border-b px-4 lg:px-6">
+        <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Logo />
         </div>
         <div className="flex-1">
