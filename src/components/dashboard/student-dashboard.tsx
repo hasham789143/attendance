@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect } from 'react';
 import { Loader2, QrCode } from 'lucide-react';
-import { QrScanner } from '@yudiel/react-qr-scanner';
+import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 
 export function StudentDashboard() {
@@ -25,7 +25,6 @@ export function StudentDashboard() {
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
   const handleScan = (result: string) => {
-    // The library now returns the raw string, not an object with a 'data' property
     if (result) {
       // The QR data from the admin is in the format "prefix:readableCode:timestamp"
       // We only need the readable code part.
@@ -129,11 +128,9 @@ export function StudentDashboard() {
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
-                    <QrScanner
-                        onDecode={handleScan}
+                    <Scanner
+                        onResult={handleScan}
                         onError={handleError}
-                        constraints={{ facingMode: 'environment' }}
-                        containerStyle={{ width: '100%' }}
                     />
                     <Button onClick={() => setShowScanner(false)} className="mt-4 w-full" variant="outline">
                         Cancel
