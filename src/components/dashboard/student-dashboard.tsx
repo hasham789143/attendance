@@ -15,15 +15,20 @@ export function StudentDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const { toast } = useToast();
+  
+  // This state ensures the scanner component is only mounted on the client
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
   const handleScan = (result: string | null) => {
     if (result) {
-      const qrData = result;
       // The QR data from the admin is in the format "prefix:readableCode:timestamp"
       // We only need the readable code part.
-      const code = qrData.split(':')[1];
+      const code = result.split(':')[1];
       if (code && userProfile) {
         setShowScanner(false);
         setIsLoading(true);
@@ -37,17 +42,29 @@ export function StudentDashboard() {
   };
 
   const handleError = (error: any) => {
-    // The scanner library throws NotAllowedError if camera access is denied.
-    // We can ignore it as the user has explicitly denied it. Other errors should be logged.
+    // The scanner library can throw errors if camera access is denied or not found.
     if (error) {
-      if (error.name !== 'NotAllowedError' && error.name !== 'NotFoundError' ) {
-          console.error('QR Scanner Error:', error);
-          toast({
+       console.error('QR Scanner Error:', error);
+       if (error.name === 'NotAllowedError') {
+            toast({
+              variant: 'destructive',
+              title: 'Camera Access Denied',
+              description: 'Please allow camera access in your browser settings.',
+            });
+       } else if (error.name === 'NotFoundError') {
+            toast({
+              variant: 'destructive',
+              title: 'Camera Not Found',
+              description: 'No camera was found on your device.',
+            });
+       } else {
+            toast({
               variant: 'destructive',
               title: 'Scanning Error',
-              description: 'An unexpected error occurred while scanning.',
-          });
-      }
+              description: 'An unexpected error occurred with the scanner.',
+            });
+       }
+       setShowScanner(false);
     }
   }
   
@@ -107,7 +124,7 @@ export function StudentDashboard() {
             {getStatusContent(myRecord)}
           </div>
 
-          {(session.status === 'active_first' || session.status === 'active_second') && myRecord?.status === 'absent' && (
+          {(session.status === 'active_first' || session.status === 'active_second') && myRecord?.status === 'absent' && isClient && (
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
