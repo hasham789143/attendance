@@ -21,10 +21,13 @@ export function StudentDashboard() {
   const handleScan = (result: string) => {
     if (result) {
       const qrData = result;
+      // The QR data from the admin is in the format "prefix:readableCode:timestamp"
+      // We only need the readable code part.
       const code = qrData.split(':')[1];
       if (code && userProfile) {
         setShowScanner(false);
         setIsLoading(true);
+        // Simulate a short delay for UX
         setTimeout(() => {
           markAttendance(userProfile.uid, code);
           setIsLoading(false);
@@ -34,6 +37,8 @@ export function StudentDashboard() {
   };
 
   const handleError = (error: any) => {
+    // The scanner library throws NotAllowedError if camera access is denied.
+    // We can ignore it as the user has explicitly denied it. Other errors should be logged.
     if (error) {
       if (error.name !== 'NotAllowedError' && error.name !== 'NotFoundError' ) {
           console.error('QR Scanner Error:', error);
@@ -47,7 +52,8 @@ export function StudentDashboard() {
   }
   
   useEffect(() => {
-    // Stop camera when component unmounts or scanner is hidden
+    // This effect ensures that the camera stream is stopped when the component unmounts
+    // or when the scanner is hidden, preventing the camera light from staying on.
     return () => {
         setShowScanner(false);
     }
