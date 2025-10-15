@@ -12,7 +12,7 @@ export default function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export default function ProtectedLayout({
     }
   }, [user, loading, router]);
 
-  if (loading || !user) {
+  if (loading || !user || !userProfile) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

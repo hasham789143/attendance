@@ -9,38 +9,53 @@ import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useFirebase } from '@/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [name, setName] = useState('');
+  const [roll, setRoll] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { auth } = useFirebase();
+  const { auth, firestore } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!name || !email || !password) {
       toast({
         variant: 'destructive',
         title: 'Missing Fields',
-        description: 'Please enter both email and password.',
+        description: 'Please fill out all required fields.',
       });
       return;
     }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      toast({ title: 'Login Successful', description: 'Redirecting to your dashboard...'});
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Create user profile in Firestore
+      await setDoc(doc(firestore, 'users', user.uid), {
+        uid: user.uid,
+        name,
+        roll,
+        email,
+        role: 'viewer', // Default role for new sign-ups
+      });
+      
+      toast({ title: 'Registration Successful', description: 'Redirecting to your dashboard...'});
       router.push('/dashboard');
+
     } catch (error: any) {
-      console.error('Login Error:', error);
+      console.error('Registration Error:', error);
       toast({
         variant: 'destructive',
-        title: 'Login Failed',
+        title: 'Registration Failed',
         description: error.message || 'An unexpected error occurred.',
       });
     } finally {
@@ -53,11 +68,34 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <Logo className="justify-center mb-2" />
-          <CardTitle>Welcome Back</CardTitle>
-          <CardDescription>Enter your credentials to login.</CardDescription>
+          <CardTitle>Create an Account</CardTitle>
+          <CardDescription>Join Class Guardian today.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleRegister} className="space-y-4">
+             <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={loading}
+                required
+              />
+            </div>
+             <div className="space-y-2">
+              <Label htmlFor="roll">Roll Number (Optional)</Label>
+              <Input
+                id="roll"
+                type="text"
+                placeholder="S2024001"
+                value={roll}
+                onChange={(e) => setRoll(e.target.value)}
+                disabled={loading}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -75,6 +113,7 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                placeholder="6+ characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
@@ -83,12 +122,12 @@ export default function LoginPage() {
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Login
+              Register
             </Button>
-            <div className="text-center text-sm text-muted-foreground">
-              Don't have an account?{' '}
-              <Link href="/register" className="underline hover:text-primary">
-                Register
+             <div className="text-center text-sm text-muted-foreground">
+              Already have an account?{' '}
+              <Link href="/login" className="underline hover:text-primary">
+                Login
               </Link>
             </div>
           </form>

@@ -11,12 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Logo } from '../logo';
 
 export function Header() {
-  const { user, logout } = useAuth();
-  const initials = user?.name.split(' ').map(n => n[0]).join('') || 'U';
+  const { userProfile, logout } = useAuth();
+  const initials = userProfile?.name.split(' ').map(n => n[0]).join('') || 'U';
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-card">
@@ -29,7 +29,7 @@ export function Header() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-9 w-9">
-                  <AvatarImage src={`https://avatar.vercel.sh/${user?.email}.png`} alt={user?.name} />
+                  <AvatarImage src={`https://avatar.vercel.sh/${userProfile?.email}.png`} alt={userProfile?.name} />
                   <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
               </Button>
@@ -37,8 +37,8 @@ export function Header() {
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{user?.name}</p>
-                  <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                  <p className="text-sm font-medium leading-none">{userProfile?.name}</p>
+                  <p className="text-xs leading-none text-muted-foreground">{userProfile?.email}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

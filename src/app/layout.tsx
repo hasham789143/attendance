@@ -5,7 +5,8 @@ import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/components/providers/auth-provider';
 import { StoreProvider } from '@/components/providers/store-provider';
 import { Toaster } from '@/components/ui/toaster';
-import { ToasterProvider } from '@/hooks/use-toast';
+import { ToasterProvider } from '@/hooks/use-toast.tsx';
+import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 const fontBody = Inter({
   subsets: ['latin'],
@@ -26,9 +27,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={cn('antialiased', fontBody.variable)}>
         <ToasterProvider>
-          <AuthProvider>
-            <StoreProvider>{children}</StoreProvider>
-          </AuthProvider>
+          <FirebaseClientProvider>
+            <AuthProvider>
+              <StoreProvider>{children}</StoreProvider>
+            </AuthProvider>
+          </FirebaseClientProvider>
         </ToasterProvider>
         <Toaster />
       </body>

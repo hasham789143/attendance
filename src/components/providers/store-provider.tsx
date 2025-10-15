@@ -1,13 +1,17 @@
 'use client';
 
 import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
-import { Student, students } from '@/lib/data';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import { useAuth, UserProfile } from './auth-provider';
+import { collection, getDocs, Firestore } from 'firebase/firestore';
+import { useFirebase } from '@/firebase';
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
+
+// Student is now UserProfile
 export type AttendanceRecord = {
-  student: Student;
+  student: UserProfile;
   status: AttendanceStatus;
   timestamp: Date | null;
   minutesLate: number;
@@ -28,6 +32,7 @@ export type Session = {
 type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
+  students: UserProfile[];
   startSession: () => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string) => boolean;
@@ -37,13 +42,11 @@ type StoreContextType = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const initialAttendance = new Map<string, AttendanceRecord>();
-students.forEach(student => {
-  initialAttendance.set(student.id, { student, status: 'absent', timestamp: null, minutesLate: 0 });
-});
-
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  const { firestore } = useFirebase();
+  const { userProfile } = useAuth();
+  const [students, setStudents] = useState<UserProfile[]>([]);
   const [session, setSession] = useState<Session>({
     status: 'inactive',
     qrCodeValue: '',
@@ -53,8 +56,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     secondScanTime: null,
     secondScanReason: null,
   });
-  const [attendance, setAttendance] = useState<AttendanceMap>(new Map(initialAttendance));
+  const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
 
+  useEffect(() => {
+    if (userProfile?.role === 'admin' && firestore) {
+      const fetchUsers = async () => {
+        const usersCol = collection(firestore, 'users');
+        const userSnapshot = await getDocs(usersCol);
+        const userList = userSnapshot.docs.map(doc => doc.data() as UserProfile).filter(u => u.role === 'viewer');
+        setStudents(userList);
+      };
+      fetchUsers();
+    }
+  }, [userProfile, firestore]);
+  
   const generateNewCode = (prefix: string) => {
     const readableCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const qrCodeValue = `${prefix}:${readableCode}:${Date.now()}`;
@@ -77,11 +92,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Reset attendance
     const newAttendance = new Map<string, AttendanceRecord>();
     students.forEach(student => {
-      newAttendance.set(student.id, { student, status: 'absent', timestamp: null, minutesLate: 0 });
+      newAttendance.set(student.uid, { student, status: 'absent', timestamp: null, minutesLate: 0 });
     });
     setAttendance(newAttendance);
     toast({ title: 'Session Started', description: 'Students can now mark their attendance.' });
-  }, [toast]);
+  }, [toast, students]);
   
   const endSession = useCallback(() => {
     setSession(prev => ({...prev, status: 'ended', qrCodeValue: '', readableCode: ''}));
@@ -107,13 +122,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const now = new Date();
       let status: AttendanceStatus = 'present';
-      let minutesLate = 0;
 
       if(session.status === 'active_first' && session.firstScanCutoff) {
           if (now > session.firstScanCutoff) {
             toast({ variant: 'destructive', title: 'Time Expired', description: 'The time to mark attendance has passed. You are marked absent.' });
-            // Keep student as absent, but record the attempt time.
-             const newRecord: AttendanceRecord = { student: students.find(s=> s.id === studentId)!, status: 'absent', timestamp: now, minutesLate: 0 };
+            const student = students.find(s => s.uid === studentId);
+            if (!student) return false;
+            
+             const newRecord: AttendanceRecord = { student, status: 'absent', timestamp: now, minutesLate: 0 };
               const newAttendance = new Map(attendance);
               newAttendance.set(studentId, newRecord);
               setAttendance(newAttendance);
@@ -121,14 +137,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
       }
       
-      const newRecord: AttendanceRecord = { student: students.find(s=> s.id === studentId)!, status, timestamp: now, minutesLate };
+      const student = students.find(s => s.uid === studentId);
+      if (!student) return false;
+
+      const newRecord: AttendanceRecord = { student, status, timestamp: now, minutesLate: 0 };
       const newAttendance = new Map(attendance);
       newAttendance.set(studentId, newRecord);
+      setAttendance(newAttendance);
       
       toast({ title: 'Attendance Marked!', description: `You are marked as ${status}.` });
       return true;
     },
-    [session, attendance, toast]
+    [session, attendance, toast, students]
   );
   
   const generateSecondQrCode = useCallback(async () => {
@@ -148,7 +168,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       console.error(error);
       toast({ variant: 'destructive', title: 'AI Error', description: 'Could not get recommendation.' });
     }
-  }, [attendance, toast]);
+  }, [attendance, toast, students]);
   
   const activateSecondQr = useCallback(() => {
     const { readableCode, qrCodeValue } = generateNewCode('second');
@@ -184,7 +204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
   return (
-    <StoreContext.Provider value={{ session, attendance, startSession, endSession, markAttendance, generateSecondQrCode, activateSecondQr }}>
+    <StoreContext.Provider value={{ session, students, attendance, startSession, endSession, markAttendance, generateSecondQrCode, activateSecondQr }}>
       {children}
     </StoreContext.Provider>
   );

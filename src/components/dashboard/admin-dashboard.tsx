@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { students } from '@/lib/data';
 import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock } from 'lucide-react';
 import Image from 'next/image';
 import { useMemo } from 'react';
@@ -78,7 +77,7 @@ function AiVerifier() {
 
 function AttendanceList() {
   const { attendance } = useStore();
-  const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => a.student.rollNumber.localeCompare(b.student.rollNumber)), [attendance]);
+  const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
 
   const getStatusBadge = (status: AttendanceRecord['status']) => {
     switch (status) {
@@ -106,8 +105,8 @@ function AttendanceList() {
           </TableHeader>
           <TableBody>
             {sortedAttendance.map(({ student, status, timestamp, minutesLate }) => (
-              <TableRow key={student.id}>
-                <TableCell className="font-medium">{student.rollNumber}</TableCell>
+              <TableRow key={student.uid}>
+                <TableCell className="font-medium">{student.roll || 'N/A'}</TableCell>
                 <TableCell>{student.name}</TableCell>
                 <TableCell>{getStatusBadge(status)}</TableCell>
                 <TableCell className="text-right">
@@ -125,7 +124,7 @@ function AttendanceList() {
 
 
 export function AdminDashboard() {
-  const { session, startSession, endSession, attendance } = useStore();
+  const { session, startSession, endSession, attendance, students } = useStore();
   const { present, late, absent } = useMemo(() => {
     const counts = { present: 0, late: 0, absent: 0 };
     attendance.forEach(record => {

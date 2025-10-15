@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Users,
   History,
-  ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -24,9 +23,9 @@ const studentNavItems = [
 
 export function MainSidebar({ className }: { className?: string }) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { userProfile } = useAuth();
 
-  const navItems = user?.role === 'admin' ? adminNavItems : studentNavItems;
+  const navItems = userProfile?.role === 'admin' ? adminNavItems : studentNavItems;
 
   return (
     <div className={cn('hidden border-r md:flex md:flex-col', className)}>

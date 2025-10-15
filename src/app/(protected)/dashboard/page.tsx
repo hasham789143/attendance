@@ -5,9 +5,9 @@ import { StudentDashboard } from '@/components/dashboard/student-dashboard';
 import { useAuth } from '@/components/providers/auth-provider';
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { userProfile } = useAuth();
 
-  if (user?.role === 'admin') {
+  if (userProfile?.role === 'admin') {
     return <AdminDashboard />;
   }
 

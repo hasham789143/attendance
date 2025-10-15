@@ -10,19 +10,20 @@ import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 export function StudentDashboard() {
-  const { user } = useAuth();
+  const { userProfile } = useAuth();
   const { session, attendance, markAttendance } = useStore();
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const myRecord = user?.studentProfile ? attendance.get(user.studentProfile.id) : undefined;
+  // The student's own ID is now their Firebase UID
+  const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (user?.studentProfile) {
+    if (userProfile) {
         setIsLoading(true);
         setTimeout(() => {
-            markAttendance(user.studentProfile!.id, code);
+            markAttendance(userProfile.uid, code);
             setIsLoading(false);
             setCode('');
         }, 500);
@@ -60,7 +61,7 @@ export function StudentDashboard() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold font-headline">Student Dashboard</h1>
-        <p className="text-muted-foreground">Welcome, {user?.name}.</p>
+        <p className="text-muted-foreground">Welcome, {userProfile?.name}.</p>
       </div>
 
       <Card>
