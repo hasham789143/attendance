@@ -2,24 +2,24 @@
  * @fileOverview Firestore Security Rules for Attendance Tracking System
  *
  * Core Philosophy:
- * This ruleset enforces a user-ownership model for user profiles and restricts
- * access to attendance sessions and records based on user roles. It prioritizes
- * secure access to user data while allowing controlled access to attendance information.
+ * This ruleset enforces a user-ownership model for user profiles, restricts
+ * attendance session creation to authenticated users, and allows public read
+ * access to attendance records while enforcing ownership for writes. Application settings are publicly readable.
  *
  * Data Structure:
- * - /users/{userId}: Stores user profile information, with 'userId' matching the Firebase Auth UID.
- * - /sessions/current: Stores the current active attendance session.
- * - /attendance/{attendanceId}: Stores individual attendance records.
- * - /settings/attendance: Stores application-wide settings.
+ * - /users/{userId}: Stores user profile information. 'userId' must match the Firebase Auth UID.
+ * - /sessions/current: Stores the current attendance session. Only authenticated users can create.
+ * - /attendance/{attendanceId}: Stores attendance records. Publicly readable, but only the owner can modify.
+ * - /settings/attendance: Stores application settings. Publicly readable.
  *
  * Key Security Decisions:
- * - User profiles are strictly owned by the authenticated user.
- * - Attendance session creation is likely limited to admins (not explicitly defined here, needs more information).
- * - Attendance records can be read publicly, but only created by authenticated users.
- * - Listing of user documents is disallowed for privacy reasons.
+ * - Users can only read/write their own profile data.
+ * - Only authenticated users can create an attendance session.
+ * - Attendance records are publicly readable to allow for reporting and analysis, but writes are owner-controlled.
+ * - Application settings are publicly readable, assuming no sensitive information is stored there.
  *
  * Denormalization for Authorization:
- *  - User documents denormalize the 'uid' field, which is validated against the document ID during creation to enforce ownership.
+ * - Attendance records MUST include an `uid` field that matches the user's UID to enable owner-only write access.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -28,90 +28,70 @@ service cloud.firestore {
     /**
      * @description Controls access to user profile documents.
      * @path /users/{userId}
-     * @allow (create) User with UID 'user123' can create their own profile.
-     * @allow (update) User with UID 'user123' can update their own profile.
-     * @allow (get) User with UID 'user123' can read their own profile.
-     * @deny (create) User with UID 'user456' cannot create a profile with UID 'user123'.
-     * @deny (update) User with UID 'user456' cannot update the profile of user 'user123'.
-     * @deny (delete) Only the owner can delete
-     * @principle Enforces document ownership for user profiles and validates the uid.
+     * @allow (create) User with matching UID can create their profile.
+     * @allow (get, list, update, delete) User can only access their own profile.
+     * @deny (create) User tries to create a profile with a mismatched UID.
+     * @deny (update, delete) User tries to modify someone else's profile.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
-      //isOwner(userId)
-      allow get: if isSignedIn() && isOwner(userId);
+      function isOwner(userId) {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      allow get: if isOwner(userId);
       allow list: if false;
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.uid == userId;
-      allow update: if isSignedIn() && isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
-      allow delete: if isSignedIn() && isExistingOwner(userId);
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
     }
 
     /**
      * @description Controls access to the current attendance session.
      * @path /sessions/current
-     * @allow (get) Any signed-in user can read the current session.
-     * @deny (create) Only admins can create attendance sessions (not yet implemented).
-     * @deny (update) Only admins can update attendance sessions (not yet implemented).
-     * @deny (delete) Only admins can delete attendance sessions (not yet implemented).
-     * @principle Restricts write access to admins for session management.
+     * @allow (create) Authenticated user can create a session. The `adminUid` field must match the user's UID.
+     * @allow (get) Any authenticated user can read the current session.
+     * @deny (list, update, delete) No listing, updating, or deleting.
+     * @principle Requires authentication for creation.
      */
-    match /sessions/{sessionId} {
+    match /sessions/current {
+      function isSignedIn() {
+        return request.auth != null;
+      }
       allow get: if isSignedIn();
       allow list: if false;
-      // TODO: Add more specific admin role check
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
-    }
-
-     /**
-      * @description Controls access to individual attendance records.
-      * @path /attendance/{attendanceId}
-      * @allow (get) Any signed-in user can read attendance records.
-      * @allow (create) Any signed-in user can create attendance records.
-      * @deny (update) Only admins can update attendance records (not yet implemented).
-      * @deny (delete) Only admins can delete attendance records (not yet implemented).
-      * @principle Allows public read access but restricts write access to specific roles.
-      */
-    match /attendance/{attendanceId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      // TODO: Add more specific admin role check
+      allow create: if isSignedIn() && request.resource.data.adminUid == request.auth.uid;
       allow update: if false;
       allow delete: if false;
     }
 
     /**
+     * @description Controls access to individual attendance records.
+     * @path /attendance/{attendanceId}
+     * @allow (get, list) Attendance records are publicly readable.
+     * @allow (create) Authenticated user can create attendance record with matching uid.
+     * @allow (update, delete) Only the owner (the user whose attendance it is) can modify their record, but only if the document exists.
+     * @deny (create, update, delete) if not owner of the record.
+     * @principle Public read, owner-only write, enforces document existence.
+     */
+    match /attendance/{attendanceId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    /**
      * @description Controls access to application-wide settings.
      * @path /settings/attendance
-     * @allow (get) Any signed-in user can read the settings.
-     * @deny (create) No one can create settings because there is exactly one and it already exists.
-     * @deny (update) Only admins can update the settings (not yet implemented).
-     * @deny (delete) No one can delete settings because there is exactly one.
-     * @principle Allows public read access but restricts write access to specific roles.
+     * @allow (get, list) Settings are publicly readable.
+     * @deny (create, update, delete) Settings cannot be created, updated, or deleted via client.
+     * @principle Public read, no write access.
      */
     match /settings/attendance {
-      allow get: if isSignedIn();
-      allow list: if false;
-      // TODO: Add more specific admin role check
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow get, list: if true;
+      allow create, update, delete: if false;
     }
-  }
-
-  // Helper function to determine if the user is signed in.
-  function isSignedIn() {
-    return request.auth != null;
-  }
-
-  // Helper function to determine if the user is the owner of the document.
-  function isOwner(userId) {
-    return request.auth.uid == userId;
-  }
-
-  // Helper function to determine if the user is the existing owner of the document.
-  function isExistingOwner(userId) {
-    return isOwner(userId) && resource != null;
   }
 }
