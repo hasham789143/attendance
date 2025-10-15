@@ -18,7 +18,7 @@ export function StudentDashboard() {
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
-  const handleScan = (result: string) => {
+  const handleScan = (result: string | null) => {
     if (result) {
       const qrData = result;
       // The QR data from the admin is in the format "prefix:readableCode:timestamp"
