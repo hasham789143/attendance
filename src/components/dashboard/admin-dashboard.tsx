@@ -136,7 +136,7 @@ export function AdminDashboard() {
     return counts;
   }, [attendance]);
   
-  const totalStudents = students.length;
+  const totalStudents = students?.length || 0;
   const attended = present + late;
   const attendancePercentage = totalStudents > 0 ? (attended / totalStudents) * 100 : 0;
 
@@ -230,3 +230,5 @@ export function AdminDashboard() {
     </div>
   );
 }
+
+    
