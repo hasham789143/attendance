@@ -1,54 +1,99 @@
+/**
+ * @fileoverview Firestore Security Rules for Attendance Tracking System
+ *
+ * Core Philosophy:
+ * This ruleset enforces a user-ownership model for user profiles and restricts
+ * access to attendance sessions and records based on user roles. Only admins
+ * can create attendance sessions, while users can only create attendance records
+ * for themselves.  Application settings are publicly readable but only updatable by admins.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profile data, where {userId} matches the Firebase auth UID.
+ * - /sessions/{sessionId}: Stores attendance sessions.
+ * - /attendance/{attendanceId}: Stores individual attendance records.
+ * - /settings/attendance: Stores application settings.
+ *
+ * Key Security Decisions:
+ * - User listing is disallowed.
+ * - Read access to application settings is public, allowing the app to function without authentication for basic settings.
+ * - The system defaults to a secure posture, explicitly denying access where the data model is ambiguous.
+ *
+ * Denormalization for Authorization:
+ *  - Admin UIDs are denormalized onto AttendanceSession documents to simplify admin-based access control.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    /**
+     * @description Controls access to user profile documents.
+     * @path /users/{userId}
+     */
     match /users/{userId} {
       function isSignedIn() {
         return request.auth != null;
       }
+
       function isOwner(userId) {
-        return isSignedIn() && request.auth.uid == userId;
+        return request.auth.uid == userId;
       }
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false; // User listing is not permitted
+
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isOwner(userId);
+      allow delete: if false;
     }
 
-    match /classes/{classId} {
-      function isSignedIn() {
+    /**
+     * @description Controls access to attendance sessions.
+     * @path /sessions/{sessionId}
+     */
+    match /sessions/{sessionId} {
+      function isAdmin(adminUid) {
+          return request.auth.uid == adminUid;
+      }
+
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if isSignedIn() && isAdmin(request.resource.data.adminUid);
+      allow update: if isSignedIn() && isAdmin(resource.data.adminUid);
+      allow delete: if false;
+    }
+
+   /**
+     * @description Controls access to individual attendance records.
+     * @path /attendance/{attendanceId}
+     */
+    match /attendance/{attendanceId} {
+       function isSignedIn() {
         return request.auth != null;
       }
-      allow get: if isSignedIn();
+
+      allow get: if false;
       allow list: if false;
-      allow create: if false;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.uid;
       allow update: if false;
       allow delete: if false;
     }
 
-    match /sessions/current {
-      allow get: if true;
-      allow list: if false;
-      allow create: if true;
-      allow update: if true;
-      allow delete: if true;
-    }
-
-    match /attendance/{attendanceId} {
-      allow get: if true;
-      allow list: if false;
-      allow create: if true;
-      allow update: if true;
-      allow delete: if true;
-    }
-
+     /**
+      * @description Controls access to application-wide settings.
+      * @path /settings/attendance
+      */
     match /settings/attendance {
-      allow get: if true;
-      allow list: if false;
-      allow create: if true;
-      allow update: if true;
-      allow delete: if true;
+        function isAdmin() {
+          return request.auth.token.role == 'admin';
+        }
+
+        allow get: if true;
+        allow list: if false;
+
+        allow create: if false;
+        allow update: if isSignedIn() && isAdmin();
+        allow delete: if false;
     }
   }
 }
