@@ -22,13 +22,26 @@ export default function ProtectedLayout({
     }
   }, [user, loading, router]);
 
-  if (loading || !user || !userProfile) {
+  if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
+
+  // Render layout only if user is authenticated
+  // and userProfile is either loaded or we are sure it's not needed immediately
+  if (!userProfile && !loading) {
+     // This can happen briefly if the user doc is not found or during role changes.
+     // You might want to show a specific message or redirect.
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <p>Could not load user profile. Please try again later.</p>
+      </div>
+    );
+  }
+
 
   return (
     <StoreProvider>
