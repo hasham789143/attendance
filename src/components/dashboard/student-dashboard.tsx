@@ -124,7 +124,7 @@ export function StudentDashboard() {
             {getStatusContent(myRecord)}
           </div>
 
-          {(session.status === 'active_first' || session.status === 'active_second') && myRecord?.status === 'absent' && isClient && (
+          {(session.status === 'active_first' || session.status === 'active_second') && (!myRecord || myRecord.status === 'absent') && isClient && (
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
