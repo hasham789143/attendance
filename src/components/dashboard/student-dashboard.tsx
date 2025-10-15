@@ -112,7 +112,7 @@ export function StudentDashboard() {
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
                     <QrScanner
-                        onDecode={handleScan}
+                        onDecode={(result) => handleScan(result)}
                         onError={handleError}
                         constraints={{ facingMode: 'environment' }}
                         containerStyle={{ width: '100%' }}
