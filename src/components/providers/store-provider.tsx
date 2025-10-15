@@ -2,7 +2,7 @@
 
 import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
 import { Student, students } from '@/lib/data';
-import { useToast } from '@/hooks/use-toast.tsx';
+import { useToast } from '@/hooks/use-toast';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
@@ -111,15 +111,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       if(session.status === 'active_first' && session.firstScanCutoff) {
           if (now > session.firstScanCutoff) {
-              status = 'late';
-              minutesLate = Math.round((now.getTime() - session.firstScanCutoff.getTime()) / 60000);
+            toast({ variant: 'destructive', title: 'Time Expired', description: 'The time to mark attendance has passed. You are marked absent.' });
+            // Keep student as absent, but record the attempt time.
+             const newRecord: AttendanceRecord = { student: students.find(s=> s.id === studentId)!, status: 'absent', timestamp: now, minutesLate: 0 };
+              const newAttendance = new Map(attendance);
+              newAttendance.set(studentId, newRecord);
+              setAttendance(newAttendance);
+            return false;
           }
       }
       
       const newRecord: AttendanceRecord = { student: students.find(s=> s.id === studentId)!, status, timestamp: now, minutesLate };
       const newAttendance = new Map(attendance);
       newAttendance.set(studentId, newRecord);
-      setAttendance(newAttendance);
       
       toast({ title: 'Attendance Marked!', description: `You are marked as ${status}.` });
       return true;
