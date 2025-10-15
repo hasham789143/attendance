@@ -1,99 +1,88 @@
 /**
- * @fileoverview Firestore Security Rules for Attendance Tracking System
+ * @file Firebase Security Rules for Attendance Tracking System
  *
- * Core Philosophy:
- * This ruleset enforces a user-ownership model for user profiles and restricts
- * access to attendance sessions and records based on user roles. Only admins
- * can create attendance sessions, while users can only create attendance records
- * for themselves.  Application settings are publicly readable but only updatable by admins.
- *
- * Data Structure:
- * - /users/{userId}: Stores user profile data, where {userId} matches the Firebase auth UID.
- * - /sessions/{sessionId}: Stores attendance sessions.
- * - /attendance/{attendanceId}: Stores individual attendance records.
- * - /settings/attendance: Stores application settings.
- *
- * Key Security Decisions:
- * - User listing is disallowed.
- * - Read access to application settings is public, allowing the app to function without authentication for basic settings.
- * - The system defaults to a secure posture, explicitly denying access where the data model is ambiguous.
- *
- * Denormalization for Authorization:
- *  - Admin UIDs are denormalized onto AttendanceSession documents to simplify admin-based access control.
+ * @core_philosophy This ruleset enforces a user-ownership model for user profiles and allows open reads for class data.
+ *   Attendance sessions and records are writeable by authenticated users.
+ * @data_structure
+ *   - `/users/{userId}`: Stores user profile data, with 'userId' matching the Firebase Auth UID.
+ *   - `/attendance/{attendanceId}`: Stores attendance records.
+ *   - `/classes/{classId}`: Stores class data.
+ * @key_security_decisions
+ *   - Users can only read and write their own profile data.
+ *   - Attendance data is writeable by any authenticated user.
+ *   - Class data is readable by any authenticated user.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile documents.
+     * @description Allows users to read and write their own user profile data.
      * @path /users/{userId}
+     * @allow (read, write) if request.auth.uid == userId (User authenticates as themself)
+     * @deny (read, write) if request.auth.uid != userId (User attempts to access another user's profile)
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if false; // User listing is not permitted
-
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && isOwner(userId);
-      allow delete: if false;
+      allow get: if isOwner(userId);
+      allow list: if false; // Prevent listing of all user profiles.
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) && isExistingOwner(userId);
+      allow delete: if isOwner(userId) && isExistingOwner(userId);
     }
 
     /**
-     * @description Controls access to attendance sessions.
-     * @path /sessions/{sessionId}
+     * @description Allows any authenticated user to read and write attendance data.
+     * @path /attendance/{document=**}
+     * @allow (read, write) if request.auth != null (User is authenticated)
+     * @deny (read, write) if request.auth == null (User is not authenticated)
+     * @principle Allows open access to attendance records for authenticated users.
      */
-    match /sessions/{sessionId} {
-      function isAdmin(adminUid) {
-          return request.auth.uid == adminUid;
-      }
-
-      allow get: if true;
-      allow list: if false;
-
-      allow create: if isSignedIn() && isAdmin(request.resource.data.adminUid);
-      allow update: if isSignedIn() && isAdmin(resource.data.adminUid);
-      allow delete: if false;
+    match /attendance/{document=**} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
-   /**
-     * @description Controls access to individual attendance records.
-     * @path /attendance/{attendanceId}
+    /**
+     * @description Allows any authenticated user to read class data.
+     * @path /classes/{document=**}
+     * @allow (read) if request.auth != null (User is authenticated)
+     * @deny (read) if request.auth == null (User is not authenticated)
+     * @principle Allows open read access to class data for authenticated users.
      */
-    match /attendance/{attendanceId} {
-       function isSignedIn() {
-        return request.auth != null;
-      }
-
-      allow get: if false;
-      allow list: if false;
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.uid;
+    match /classes/{document=**} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if false;
       allow update: if false;
       allow delete: if false;
     }
 
-     /**
-      * @description Controls access to application-wide settings.
-      * @path /settings/attendance
-      */
+    /**
+     * @description Place holder rules for settings document.
+     * @path /settings/attendance
+     */
     match /settings/attendance {
-        function isAdmin() {
-          return request.auth.token.role == 'admin';
-        }
-
-        allow get: if true;
+        allow get: if true; // TODO: Add more granular read permission if necessary
         allow list: if false;
-
         allow create: if false;
-        allow update: if isSignedIn() && isAdmin();
+        allow update: if false;
         allow delete: if false;
     }
+  }
+
+  function isSignedIn() {
+    return request.auth != null;
+  }
+
+  function isOwner(userId) {
+    return request.auth.uid == userId;
+  }
+
+  function isExistingOwner(userId) {
+    return isOwner(userId) && resource != null;
   }
 }
