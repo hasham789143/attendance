@@ -24,7 +24,8 @@ export function StudentDashboard() {
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
-  const handleScan = (result: string | null) => {
+  const handleScan = (result: string) => {
+    // The library now returns the raw string, not an object with a 'data' property
     if (result) {
       // The QR data from the admin is in the format "prefix:readableCode:timestamp"
       // We only need the readable code part.
@@ -41,7 +42,7 @@ export function StudentDashboard() {
     }
   };
 
-  const handleError = (error: any) => {
+  const handleError = (error: Error) => {
     // The scanner library can throw errors if camera access is denied or not found.
     if (error) {
        console.error('QR Scanner Error:', error);
@@ -129,7 +130,7 @@ export function StudentDashboard() {
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
                     <QrScanner
-                        onDecode={(result) => handleScan(result)}
+                        onDecode={handleScan}
                         onError={handleError}
                         constraints={{ facingMode: 'environment' }}
                         containerStyle={{ width: '100%' }}
