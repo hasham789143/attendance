@@ -169,7 +169,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
               <Label htmlFor="role" className="text-right">
                 Role
               </Label>
-                <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
+                <Select onValueChange={(value) => setRole(value.toLowerCase() as 'viewer' | 'admin')} value={role}>
                     <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
