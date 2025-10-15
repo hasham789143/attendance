@@ -4,8 +4,8 @@ import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, query, where } from 'firebase/firestore';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, where, doc } from 'firebase/firestore';
+import { useCollection, useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
 
@@ -42,17 +42,42 @@ type StoreContextType = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
+function useStudents() {
+    const { firestore } = useFirebase();
+    const { userProfile } = useAuth();
+
+    // Query for all students (for admin)
+    const studentsQuery = useMemoFirebase(() => {
+        if (userProfile?.role !== 'admin' || !firestore) return null;
+        return query(collection(firestore, 'users'), where('role', '==', 'viewer'));
+    }, [userProfile, firestore]);
+
+    const { data: allStudents } = useCollection<UserProfile>(studentsQuery);
+
+    // Fetch single student profile (for viewer)
+    const studentDocRef = useMemoFirebase(() => {
+        if(userProfile?.role !== 'viewer' || !firestore || !userProfile?.uid) return null;
+        return doc(firestore, 'users', userProfile.uid);
+    }, [userProfile, firestore])
+
+    const {data: singleStudent} = useDoc<UserProfile>(studentDocRef);
+
+
+    return useMemo(() => {
+        if (userProfile?.role === 'admin') {
+            return allStudents || [];
+        }
+        if (userProfile?.role === 'viewer' && singleStudent) {
+            return [singleStudent];
+        }
+        return [];
+    }, [userProfile, allStudents, singleStudent]);
+}
+
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const { firestore } = useFirebase();
-  const { userProfile } = useAuth();
-  
-  const studentsQuery = useMemoFirebase(() => {
-    if (userProfile?.role !== 'admin' || !firestore) return null;
-    return query(collection(firestore, 'users'), where('role', '==', 'viewer'));
-  }, [userProfile, firestore]);
-  
-  const { data: students = [] } = useCollection<UserProfile>(studentsQuery);
+  const students = useStudents();
   
   const [session, setSession] = useState<Session>({
     status: 'inactive',
@@ -208,3 +233,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
