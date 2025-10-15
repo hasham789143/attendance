@@ -23,6 +23,20 @@ export function StudentDashboard() {
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
+  // This effect ensures that the camera stream is stopped when the component unmounts
+  // or when the scanner is hidden, preventing the camera light from staying on.
+  useEffect(() => {
+    return () => {
+      if (!showScanner) {
+        const mediaStream = document.querySelector('video')?.srcObject as MediaStream;
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+        }
+      }
+    }
+  }, [showScanner]);
+
+
   const handleScan = (result: string) => {
     if (result && userProfile) {
       setShowScanner(false);
@@ -75,18 +89,17 @@ export function StudentDashboard() {
     }
   }
 
-  // This effect ensures that the camera stream is stopped when the component unmounts
-  // or when the scanner is hidden, preventing the camera light from staying on.
-  useEffect(() => {
-    if (!showScanner) {
-      const mediaStream = document.querySelector('video')?.srcObject as MediaStream;
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-      }
-    }
-  }, [showScanner]);
 
   const getStatusContent = (record?: AttendanceRecord) => {
+    // If there is no active session, don't show any status.
+    if (session.status === 'inactive' || session.status === 'ended') {
+      return (
+        <div className="text-center">
+            <p className="text-muted-foreground">No session is currently active.</p>
+        </div>
+      )
+    }
+    
     if (!record || record.status === 'absent') {
       return (
         <div className="text-center">
@@ -113,6 +126,11 @@ export function StudentDashboard() {
     }
   };
 
+  const shouldShowScannerButton = (session.status === 'active_first' || session.status === 'active_second') 
+    && isClient
+    && (!myRecord || myRecord.status === 'absent');
+
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -134,7 +152,7 @@ export function StudentDashboard() {
             {getStatusContent(myRecord)}
           </div>
 
-          {(session.status === 'active_first' || session.status === 'active_second') && (!myRecord || myRecord.status === 'absent') && isClient && (
+          {shouldShowScannerButton && (
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
