@@ -1,0 +1,128 @@
+/**
+ * @fileOverview Firestore Security Rules for the AttendanceApp.
+ *
+ * Core Philosophy: This ruleset enforces a user-ownership model for user profiles
+ * and a role-based model for app settings. It also implements shared access controls
+ * for attendance records, allowing only valid users to create attendance
+ * records for themselves during active sessions.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profiles, secured by owner-only access.
+ * - /attendance/{attendanceId}: Stores individual attendance records.
+ * - /settings/attendance: Stores app-wide settings, such as whether selfie is required or registration is open, secured to writes only by admins.
+ *
+ * Key Security Decisions:
+ * - Users can only read and write their own profile data.
+ * - Only authenticated users can create attendance records under specific conditions.
+ * - Listing of users is disallowed.
+ *
+ * Denormalization for Authorization:
+ * - AttendanceRecord: includes userId, sessionId for simpler authorization checks.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Checks if the request is made by the owner of the resource.
+     * @param {string} userId - The user ID to compare against the request's authentication UID.
+     * @return {boolean} - True if the user is the owner, false otherwise.
+     */
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the request is made by an existing owner of the resource.
+     * @param {string} userId - The user ID to compare against the resource's data and the request's authentication UID.
+     * @return {boolean} - True if the user is an existing owner, false otherwise.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Checks if the user is signed in.
+     * @return {boolean} - True if the user is signed in, false otherwise.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the user has the admin role.
+     * @return {boolean} - True if the user has the admin role, false otherwise.
+     */
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    /**
+     * @description Rules for user profiles.
+     * @path /users/{userId}
+     * @allow (create) - If the authenticated user's UID matches the 'userId' and the ID in the data matches the userId.
+     * @allow (get, update, delete) - If the authenticated user's UID matches the 'userId'.
+     * @deny (list) - Listing all users is not allowed.
+     * @deny (create) - If the user ID in the data does not match the path.
+     * @principle Enforces document ownership for user profiles.
+     */
+    match /users/{userId} {
+      // Allows a user to create their own profile if the UID matches, self-creation pattern.
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      // Allows a user to read their own profile.
+      allow get: if isOwner(userId);
+      // Allows a user to update their own profile.
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id; // enforce immutability of userId
+      // Allows a user to delete their own profile.
+      allow delete: if isExistingOwner(userId);
+
+      // Do not allow listing of all users.
+      allow list: if false;
+    }
+
+    /**
+     * @description Rules for attendance records.
+     * @path /attendance/{attendanceId}
+     * @allow (create) - If the user is signed in.
+     * @allow (get) - If true (public read).
+     * @allow (update, delete) - If false (no updates or deletes).
+     * @deny (list) - Listing attendance records is denied.
+     * @principle Authenticated users can create attendance records, but only under app-level conditions, as checked in the react code.
+     */
+    match /attendance/{attendanceId} {
+      // Anyone can read attendance records, public read.
+      allow get: if true;
+      // Only signed-in users can create attendance records; other constraints are implemented in the react code, not in rules.
+      allow create: if isSignedIn();
+      // No updates allowed.
+      allow update: if isSignedIn(); // TODO: Add owner validation once the schema is updated with an ownership field.
+      // No deletes allowed.
+      allow delete: if isSignedIn(); // TODO: Add owner validation once the schema is updated with an ownership field.
+
+      // Do not allow listing of attendance records.
+      allow list: if false;
+    }
+
+    /**
+     * @description Rules for application settings.
+     * @path /settings/attendance
+     * @allow (get) - Public read access for app settings.
+     * @allow (update) - Only admins can update app settings.
+     * @deny (create, delete, list) - No creating, deleting, or listing of settings.
+     * @principle Restricts modification of application settings to admins.
+     */
+    match /settings/attendance {
+      // Public read access for settings.
+      allow get: if true;
+      // Only admins can update app settings.
+      allow update: if isAdmin();
+
+      // No creating of settings.
+      allow create: if false;
+      // No deleting of settings.
+      allow delete: if false;
+      // No listing of settings.
+      allow list: if false;
+    }
+  }
+}

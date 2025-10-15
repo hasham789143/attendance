@@ -1,0 +1,225 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the attendance tracking system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user."
+        },
+        "roll": {
+          "type": "string",
+          "description": "Roll number of the user (e.g., student ID)."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "Role of the user within the system (e.g., 'admin', 'viewer')."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "role"
+      ]
+    },
+    "AttendanceSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AttendanceSession",
+      "type": "object",
+      "description": "Represents a specific attendance session, typically associated with a class or event.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the attendance session."
+        },
+        "key": {
+          "type": "string",
+          "description": "The unique key or code associated with this attendance session, often used in QR codes."
+        },
+        "adminUid": {
+          "type": "string",
+          "description": "Reference to User. Unique identifier of the admin who created the session. (Relationship: User 1:N AttendanceSession)"
+        },
+        "startTime": {
+          "type": "string",
+          "description": "The time the session started",
+          "format": "date-time"
+        },
+        "endTime": {
+          "type": "string",
+          "description": "The time the session ended",
+          "format": "date-time"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "Latitude of the location where the attendance session is valid."
+        },
+        "longitude": {
+          "type": "number",
+          "description": "Longitude of the location where the attendance session is valid."
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "adminUid",
+        "startTime",
+        "latitude",
+        "longitude"
+      ]
+    },
+    "AttendanceRecord": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AttendanceRecord",
+      "type": "object",
+      "description": "Represents a single attendance record for a user in a specific session.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the attendance record."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. Unique identifier of the user for whom the attendance is recorded. (Relationship: User 1:N AttendanceRecord)"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to AttendanceSession. Unique identifier of the attendance session this record belongs to. (Relationship: AttendanceSession 1:N AttendanceRecord)"
+        },
+        "status": {
+          "type": "string",
+          "description": "Attendance status (e.g., 'present', 'late', 'absent')."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp when the attendance was recorded.",
+          "format": "date-time"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "URL of the photo taken during attendance, if required."
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Unique identifier of the device used to mark attendance."
+        },
+        "distance": {
+          "type": "number",
+          "description": "Distance between the user and the session location when attendance was marked."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "sessionId",
+        "status",
+        "timestamp"
+      ]
+    },
+    "AppSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AppSettings",
+      "type": "object",
+      "description": "Represents application-wide settings, such as whether selfie is required or registration is open.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the app settings (e.g., 'attendance')."
+        },
+        "isSelfieRequired": {
+          "type": "boolean",
+          "description": "Indicates whether a selfie is required for marking attendance."
+        },
+        "isRegistrationOpen": {
+          "type": "boolean",
+          "description": "Indicates whether user registration is currently open."
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information. The 'userId' is the Firebase Authentication UID. Includes fields like name, roll number, email, and role (e.g., 'admin', 'viewer', 'disabled').",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique Firebase Auth ID of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/attendance_sessions/{sessionId}",
+        "definition": {
+          "entityName": "AttendanceSession",
+          "schema": {
+            "$ref": "#/backend/entities/AttendanceSession"
+          },
+          "description": "Stores information about attendance sessions, including the key, admin who created the session, start and end times, and location coordinates.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "The unique ID of the attendance session."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/attendance/{attendanceId}",
+        "definition": {
+          "entityName": "AttendanceRecord",
+          "schema": {
+            "$ref": "#/backend/entities/AttendanceRecord"
+          },
+          "description": "Stores individual attendance records. Includes denormalized 'userId', 'sessionId', status, timestamp, photo URL (if applicable), device ID, and distance from the session location.",
+          "params": [
+            {
+              "name": "attendanceId",
+              "description": "The unique ID of the attendance record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/settings/attendance",
+        "definition": {
+          "entityName": "AppSettings",
+          "schema": {
+            "$ref": "#/backend/entities/AppSettings"
+          },
+          "description": "Stores application-wide settings, such as whether selfie is required and whether registration is open. There is only one document with id 'attendance' in this collection."
+        }
+      }
+    ],
+    "reasoning": "This Firestore structure is designed to support the Class Guardian attendance tracking application, emphasizing security, scalability, and real-time functionality. It leverages denormalization for authorization independence and structural segregation for simplified security rules.  \n\n**Authorization Independence (DBAC):** User roles ('admin', 'viewer', 'disabled') are stored directly in the `users` collection, eliminating the need for custom claims or complex hierarchical `get()` calls in security rules.  The application relies solely on `request.auth.uid` and data stored within the documents themselves for authorization.\n\n**QAPs (Rules are not Filters):**  The structure supports secure list operations by segregating data with different access needs into separate collections and using membership maps where appropriate.  This ensures that security rules can be written to allow or deny access to entire collections based on user roles and relationships, without needing to filter documents based on their content.\n\n**Denormalization Strategy:**\nTo avoid `get()` calls in security rules and to enable atomic operations, the `AttendanceRecord` includes denormalized data. This means copying relevant data directly into the `AttendanceRecord` document.\n\n\n1.  **User Data:**  The `AttendanceRecord` denormalizes the `userId` from the User collection.\n2.  **Session Data:** The `AttendanceRecord` denormalizes the `sessionId` from the AttendanceSession collection.\n\n\nThis denormalization allows security rules to validate the existence of the session and the user's role without needing to perform additional reads. This simplifies the security rules and improves performance.\n\n**Data Integrity (Invariants):**\nThe structure helps maintain data integrity by:\n\n*   Enforcing ownership through path-based access control for user-specific data (e.g., user profiles).\n*   Using server timestamps to ensure reliable and consistent timestamping of events (e.g., attendance records).\n*   Denormalizing data to maintain consistency across related documents.\n\nThis structure promotes simple, robust, and easily debuggable security rules, aligning with the core design principles of the application."
+  }
+}
