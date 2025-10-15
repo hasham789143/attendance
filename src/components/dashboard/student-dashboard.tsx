@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, QrCode } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
 export function StudentDashboard() {
   const { userProfile } = useAuth();
@@ -16,6 +17,9 @@ export function StudentDashboard() {
   const [showScanner, setShowScanner] = useState(false);
   const { toast } = useToast();
   
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
@@ -23,18 +27,36 @@ export function StudentDashboard() {
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
-  // This effect ensures that the camera stream is stopped when the component unmounts
-  // or when the scanner is hidden, preventing the camera light from staying on.
   useEffect(() => {
-    return () => {
-      if (!showScanner) {
-        const mediaStream = document.querySelector('video')?.srcObject as MediaStream;
-        if (mediaStream) {
-          mediaStream.getTracks().forEach(track => track.stop());
+    let stream: MediaStream | null = null;
+    const getCameraPermission = async () => {
+      if (showScanner) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setHasCameraPermission(true);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (error) {
+          console.error('Error accessing camera:', error);
+          setHasCameraPermission(false);
+          setShowScanner(false);
+          toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: 'Please enable camera permissions in your browser settings.',
+          });
         }
       }
-    }
-  }, [showScanner]);
+    };
+    getCameraPermission();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [showScanner, toast]);
 
 
   const handleScan = (result: string) => {
@@ -45,9 +67,7 @@ export function StudentDashboard() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          // The QR code value is expected to be in the format `prefix:code:timestamp`
-          const codeParts = result.split(':');
-          const code = codeParts.length > 1 ? codeParts[1] : result;
+          const code = result.split(':')[1] || result;
           markAttendance(userProfile.uid, code, { lat: latitude, lng: longitude });
           setIsLoading(false);
         },
@@ -91,7 +111,6 @@ export function StudentDashboard() {
 
 
   const getStatusContent = (record?: AttendanceRecord) => {
-    // If there is no active session, don't show any status.
     if (session.status === 'inactive' || session.status === 'ended') {
       return (
         <div className="text-center">
@@ -126,9 +145,9 @@ export function StudentDashboard() {
     }
   };
 
-  const shouldShowScannerButton = (session.status === 'active_first' || session.status === 'active_second') 
-    && isClient
-    && (!myRecord || myRecord.status === 'absent');
+  const shouldShowScannerButton = isClient && 
+    (session.status === 'active_first' || session.status === 'active_second') &&
+    (!myRecord || myRecord.status === 'absent');
 
 
   return (
@@ -159,7 +178,20 @@ export function StudentDashboard() {
                     <Scanner
                         onResult={handleScan}
                         onError={handleError}
+                        options={{
+                            video: videoRef.current ? { deviceId: (videoRef.current.srcObject as MediaStream)?.getVideoTracks()[0].getSettings().deviceId } : true,
+                        }}
                     />
+                    <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
+
+                    {hasCameraPermission === false && (
+                        <Alert variant="destructive">
+                            <AlertTitle>Camera Access Required</AlertTitle>
+                            <AlertDescription>
+                                Please allow camera access to use this feature. You might need to reload the page after granting permission.
+                            </AlertDescription>
+                        </Alert>
+                    )}
                     <Button onClick={() => setShowScanner(false)} className="mt-4 w-full" variant="outline">
                         Cancel
                     </Button>
