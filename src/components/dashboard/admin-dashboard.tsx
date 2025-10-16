@@ -158,7 +158,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
 
 export function AdminDashboard() {
-  const { session, attendance, students } = useStore();
+  const { session, attendance, students, endSession } = useStore();
   const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
   
   const { present, absent, leftEarly } = useMemo(() => {
@@ -269,5 +269,3 @@ export function AdminDashboard() {
     </div>
   );
 }
-
-    
