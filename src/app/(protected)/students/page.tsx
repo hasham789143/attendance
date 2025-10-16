@@ -1,67 +1,55 @@
 'use client';
-import { useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { collection, query, orderBy, limit } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
-import { UserProfile } from '@/components/providers/auth-provider';
+import { AttendanceSession } from '@/models/backend';
+import { SessionHistory } from '@/components/dashboard/session-history';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 
-export default function StudentsPage() {
+
+export default function ReportsPage() {
   const { firestore } = useFirebase();
 
-  const studentsQuery = useMemoFirebase(() => {
+  const sessionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, "users"), where("role", "==", "viewer"));
+    // Query for the last 20 sessions, ordered by creation date
+    return query(
+      collection(firestore, "sessions"), 
+      orderBy("createdAt", "desc"),
+      limit(20)
+    );
   }, [firestore]);
 
-  const { data: students, isLoading } = useCollection<UserProfile>(studentsQuery);
-  
-  const sortedStudents = useMemo(() => {
-    if (!students) return [];
-    return [...students].sort((a, b) => (a.roll || '').localeCompare(b.roll || ''));
-  }, [students]);
+  const { data: sessions, isLoading } = useCollection<AttendanceSession>(sessionsQuery);
 
   return (
     <div>
-      <h1 className="text-2xl font-bold font-headline mb-4">Student Roster</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>All Students</CardTitle>
-          <CardDescription>A list of all students enrolled in the class.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center items-center h-40">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[80px]">Avatar</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Roll Number</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedStudents.map(student => (
-                  <TableRow key={student.uid}>
-                    <TableCell>
-                      <Avatar>
-                          <AvatarFallback>{student.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                      </Avatar>
-                    </TableCell>
-                    <TableCell className="font-medium">{student.name}</TableCell>
-                    <TableCell>{student.roll || 'N/A'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <h1 className="text-2xl font-bold font-headline mb-4">Attendance Reports</h1>
+      {isLoading ? (
+        <div className="flex justify-center items-center h-40">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <Accordion type="single" collapsible className="w-full">
+            {sessions && sessions.length > 0 ? (
+                sessions.map((session, index) => (
+                    <AccordionItem value={`item-${index}`} key={session.id}>
+                        <AccordionTrigger>Session from {new Date(session.createdAt).toLocaleDateString()}</AccordionTrigger>
+                        <AccordionContent>
+                           <SessionHistory sessionId={session.id} sessionDate={new Date(session.createdAt)} />
+                        </AccordionContent>
+                    </AccordionItem>
+                ))
+            ) : (
+                <p className="text-muted-foreground text-center py-8">No historical session data found.</p>
+            )}
+        </Accordion>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-optimization.flow
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { collection, query, where, doc, writeBatch } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
 import { AttendanceSession } from '@/models/backend';
@@ -209,122 +209,136 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, [toast, firestore, userProfile, sessionDocRef]);
   
-  const endSession = useCallback(() => {
-    if (!sessionDocRef) return;
-    deleteDocumentNonBlocking(sessionDocRef);
-    // Reset local state completely on session end
-    setAttendance(new Map());
-    setDevicesInUse(new Set());
-    setSession({ 
-        status: 'ended',
-        qrCodeValue: '',
-        readableCode: '',
-        startTime: null,
-        lateCutoff: null,
-        secondScanTime: null,
-        secondScanReason: null
-    });
-    toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
-  },[toast, sessionDocRef]);
+  const endSession = useCallback(async () => {
+    if (!sessionDocRef || !dbSession || !firestore) return;
+
+    try {
+      const batch = writeBatch(firestore);
+      
+      // Archive records
+      attendance.forEach((record) => {
+        // Convert Dates to strings for Firestore
+        const serializableRecord = {
+          ...record,
+          firstScanTimestamp: record.firstScanTimestamp ? record.firstScanTimestamp.toISOString() : null,
+          secondScanTimestamp: record.secondScanTimestamp ? record.secondScanTimestamp.toISOString() : null,
+        };
+        const recordRef = doc(collection(firestore, 'sessions', dbSession.id, 'records'));
+        batch.set(recordRef, serializableRecord);
+      });
+
+      // Delete the current session
+      batch.delete(sessionDocRef);
+
+      await batch.commit();
+
+      // Reset local state completely on session end
+      setAttendance(new Map());
+      setDevicesInUse(new Set());
+      setSession({ 
+          status: 'ended',
+          qrCodeValue: '',
+          readableCode: '',
+          startTime: null,
+          lateCutoff: null,
+          secondScanTime: null,
+          secondScanReason: null
+      });
+      toast({ title: 'Session Ended', description: 'Attendance has been archived and is now closed.' });
+
+    } catch (error) {
+      console.error("Failed to archive session:", error);
+      toast({ variant: 'destructive', title: 'Error Ending Session', description: 'Could not archive records. Please try again.' });
+    }
+  }, [sessionDocRef, dbSession, firestore, attendance, toast]);
 
   const markAttendance = useCallback((studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => {
-    if (!session.startTime || session.status === 'inactive' || session.status === 'ended') {
-        toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
-        return;
-    }
-
-    const { readableCode: expectedCode, prefix: codePrefix } = parseQrCodeValue(session.qrCodeValue);
-    const { readableCode: receivedCode } = parseQrCodeValue(code);
-
-    if (receivedCode.toUpperCase() !== expectedCode.toUpperCase()) {
-        toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
-        return;
-    }
-    
-    if (session.lat && session.lng) {
-        const distance = getDistance({lat: session.lat, lng: session.lng}, location);
-        if (distance > 100) { // 100 meters
-            toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
-            return;
-        }
-        toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
-    } else {
-        toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
-        return;
-    }
-
-    setAttendance(prevAttendance => {
-        const newAttendance = new Map(prevAttendance);
+    setAttendance(currentAttendance => {
+        const newAttendance = new Map(currentAttendance);
         const studentRecord = newAttendance.get(studentId);
 
-        if (!studentRecord) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not find your student profile.' });
-            return prevAttendance;
+        if (!session.startTime || !studentRecord || (session.status !== 'active_first' && session.status !== 'active_second')) {
+            toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
+            return newAttendance;
+        }
+
+        const { readableCode: expectedCode, prefix: codePrefix } = parseQrCodeValue(session.qrCodeValue);
+        const { readableCode: receivedCode } = parseQrCodeValue(code);
+
+        if (receivedCode.toUpperCase() !== expectedCode.toUpperCase()) {
+            toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
+            return newAttendance;
+        }
+
+        if (session.lat && session.lng) {
+            const distance = getDistance({ lat: session.lat, lng: session.lng }, location);
+            if (distance > 100) {
+                toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
+                return newAttendance;
+            }
+             toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
+        } else {
+            toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
+            return newAttendance;
         }
 
         const now = new Date();
-        
+
         if (session.status === 'active_first' && codePrefix === 'first') {
             if (studentRecord.firstScanStatus !== 'absent') {
-                toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
-                return prevAttendance;
+                toast({ title: 'Already Scanned', description: 'You have already marked your attendance for this scan.' });
+                return newAttendance;
             }
-            if (devicesInUse.has(deviceId)) {
+             if (devicesInUse.has(deviceId)) {
                 toast({ variant: 'destructive', title: 'Device Already Used', description: 'This device has already marked attendance for another student.' });
-                return prevAttendance;
+                return newAttendance;
             }
 
             let firstScanStatus: 'present' | 'late' = 'present';
             let minutesLate = 0;
-            let toastDescription = 'You are marked as PRESENT.';
 
             if (session.lateCutoff && now > session.lateCutoff) {
                 firstScanStatus = 'late';
                 minutesLate = Math.round((now.getTime() - session.lateCutoff.getTime()) / 60000);
-                toastDescription = `You are marked as LATE (${minutesLate} min).`;
             }
-
+            
             const updatedRecord: AttendanceRecord = {
                 ...studentRecord,
                 firstScanStatus,
                 minutesLate,
                 firstScanTimestamp: now,
-                finalStatus: firstScanStatus,
+                finalStatus: firstScanStatus, // Set final status for now
             };
+
             newAttendance.set(studentId, updatedRecord);
             setDevicesInUse(prev => new Set(prev).add(deviceId));
-            toast({ title: "Attendance Marked!", description: toastDescription });
-            return newAttendance;
-        }
+            toast({ title: 'Attendance Marked!', description: `You are marked as ${firstScanStatus.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}.` });
 
-        if (session.status === 'active_second' && codePrefix === 'second') {
+        } else if (session.status === 'active_second' && codePrefix === 'second') {
             if (studentRecord.firstScanStatus === 'absent') {
-                toast({ variant: 'destructive', title: 'First Scan Missed', description: 'You cannot mark the second scan without the first.' });
-                return prevAttendance;
+                toast({ variant: 'destructive', title: 'First Scan Missed', description: 'You cannot complete the second scan without the first.' });
+                return newAttendance;
             }
             if (studentRecord.secondScanStatus === 'present') {
-                toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
-                return prevAttendance;
+                toast({ title: 'Already Scanned', description: 'You have already completed the second scan.' });
+                return newAttendance;
             }
-            if (devicesInUse.has(deviceId)) {
-                toast({ variant: 'destructive', title: 'Device Already Used', description: 'This device has already marked attendance for another student.' });
-                return prevAttendance;
-            }
+            // Note: We don't check device ID for the second scan, as the same student should be using the same device.
 
             const updatedRecord: AttendanceRecord = {
                 ...studentRecord,
                 secondScanStatus: 'present',
                 secondScanTimestamp: now,
-                finalStatus: studentRecord.firstScanStatus, // 'present' or 'late'
+                finalStatus: studentRecord.firstScanStatus, // Final status is 'present' or 'late' from the first scan
             };
             newAttendance.set(studentId, updatedRecord);
-            setDevicesInUse(prev => new Set(prev).add(deviceId));
-            toast({ title: "Attendance Marked!", description: 'Your presence has been verified!' });
-            return newAttendance;
+            toast({ title: 'Verification Complete!', description: 'You are now fully marked as present.' });
+        
+        } else {
+            toast({ variant: 'destructive', title: 'Invalid Scan', description: 'This QR code is for a different scanning round.' });
         }
         
-        toast({ variant: 'destructive', title: 'Invalid Scan', description: 'This QR code is for a different scanning session.' });
-        return prevAttendance;
+        return newAttendance;
     });
 }, [session, devicesInUse, toast]);
   
@@ -363,6 +377,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setAttendance(prevAttendance => {
         const newAttendance = new Map(prevAttendance);
         newAttendance.forEach((record, studentId) => {
+            // Only update students who were present for the first scan
             if (record.firstScanStatus !== 'absent') {
                 const updatedRecord: AttendanceRecord = { 
                     ...record,
@@ -376,7 +391,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
     setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
-    setDevicesInUse(new Set()); // Reset devices for the second scan
+    // We don't reset devices here, allowing same device for second scan.
     toast({ title: 'Second Scan Activated', description: 'Students must scan again to be marked fully present.' });
   }, [toast]);
 
