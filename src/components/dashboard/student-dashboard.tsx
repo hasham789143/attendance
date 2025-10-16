@@ -217,13 +217,12 @@ export function StudentDashboard() {
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">
-                    <Scanner
-                        onResult={handleScan}
-                        onError={handleError}
-                        options={{
-                            video: videoRef.current ? { deviceId: (videoRef.current.srcObject as MediaStream)?.getVideoTracks()[0].getSettings().deviceId } : true,
-                        }}
-                    />
+                    {hasCameraPermission && (
+                      <Scanner
+                          onResult={handleScan}
+                          onError={handleError}
+                      />
+                    )}
                     <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
 
                     <Button onClick={() => setShowScanner(false)} className="mt-4 w-full" variant="outline">
