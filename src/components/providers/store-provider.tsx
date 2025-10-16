@@ -6,7 +6,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import { useAuth, UserProfile } from './auth-provider';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { getDistance } from '@/lib/utils';
+import { getDistance, getDeviceId } from '@/lib/utils';
 import { AttendanceSession } from '@/models/backend';
 
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
