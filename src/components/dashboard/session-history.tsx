@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useCollection, useFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { useCollection, useFirebase, updateDocumentNonBlocking, useMemoFirebase } from '@/firebase';
 import { collection, query, doc, DocumentReference } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,7 +24,11 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
   const { firestore } = useFirebase();
   const [recordToEdit, setRecordToEdit] = useState<StoredAttendanceRecord & { id: string } | null>(null);
 
-  const recordsQuery = query(collection(firestore, "sessions", sessionId, "records"));
+  const recordsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, "sessions", sessionId, "records"));
+  }, [firestore, sessionId]);
+
   const { data: records, isLoading } = useCollection<StoredAttendanceRecord>(recordsQuery);
 
   const sortedRecords = records?.sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')) || [];

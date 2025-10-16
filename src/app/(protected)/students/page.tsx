@@ -25,7 +25,7 @@ export default function ReportsPage() {
     );
   }, [firestore]);
 
-  const { data: sessions, isLoading } = useCollection<AttendanceSession>(sessionsQuery);
+  const { data: sessions, isLoading } = useCollection<AttendanceSession & { id: string }>(sessionsQuery);
 
   return (
     <div>
@@ -39,7 +39,7 @@ export default function ReportsPage() {
             {sessions && sessions.length > 0 ? (
                 sessions.map((session, index) => (
                     <AccordionItem value={`item-${index}`} key={session.id}>
-                        <AccordionTrigger>Session from {new Date(session.createdAt).toLocaleDateString()}</AccordionTrigger>
+                        <AccordionTrigger>Session from {new Date(session.createdAt).toLocaleString()}</AccordionTrigger>
                         <AccordionContent>
                            <SessionHistory sessionId={session.id} sessionDate={new Date(session.createdAt)} />
                         </AccordionContent>
