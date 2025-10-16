@@ -105,14 +105,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (dbSession && students.length > 0) {
       const startTime = dbSession.createdAt ? new Date(dbSession.createdAt) : new Date();
       const lateCutoff = dbSession.lateAfterMinutes ? new Date(startTime.getTime() + dbSession.lateAfterMinutes * 60 * 1000) : null;
-      const { readableCode } = parseQrCodeValue(dbSession.key);
+      const { readableCode, timestamp } = parseQrCodeValue(dbSession.key);
       
-      setSession(prevSession => {
-        const isNewSession = prevSession.qrCodeValue.split(':')[2] !== dbSession.key.split(':')[2];
-        const newStatus = prevSession.status === 'active_second' ? 'active_second' : 'active_first';
+      const currentSessionTimestamp = session.qrCodeValue.split(':')[2];
+      const dbSessionTimestamp = dbSession.key.split(':')[2];
 
-        // If the session in DB is new (based on timestamp) or attendance is empty, initialize attendance
-        if(isNewSession || attendance.size === 0) {
+      setSession(prevSession => {
+        // Only re-initialize attendance if it's a completely new session
+        if (dbSessionTimestamp !== currentSessionTimestamp) {
             const newAttendance = new Map<string, AttendanceRecord>();
             students.forEach(student => {
                 newAttendance.set(student.uid, { 
@@ -126,11 +126,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 });
             });
             setAttendance(newAttendance);
+             return { // Return new session state
+                ...prevSession,
+                status: 'active_first', 
+                qrCodeValue: dbSession.key,
+                readableCode,
+                startTime,
+                lateCutoff,
+                lat: dbSession.lat,
+                lng: dbSession.lng,
+                secondScanTime: null, // Reset AI suggestion for new session
+                secondScanReason: null
+            };
         }
 
+        // If it's the same session, just update the session data but preserve attendance state
         return {
-          ...prevSession, // preserve second scan info
-          status: newStatus, 
+          ...prevSession,
           qrCodeValue: dbSession.key,
           readableCode,
           startTime,
@@ -140,9 +152,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         };
       });
 
-    } else if (!dbSession) { // Explicitly check for no dbSession
+    } else if (!dbSession) { // Explicitly check for no dbSession (session ended)
       setSession({
-        status: 'inactive',
+        status: 'ended', // Use 'ended' to signify it was active but now is not
         qrCodeValue: '',
         readableCode: '',
         startTime: null,
@@ -150,9 +162,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         secondScanTime: null,
         secondScanReason: null,
       });
-      setAttendance(new Map());
+      // Optionally clear attendance, or keep it to show the final state of the last session
+      // setAttendance(new Map());
     }
-  }, [dbSession, students, attendance.size]);
+  }, [dbSession, students]); // Rerun when dbSession changes or when the student list is finally loaded
 
   
   const generateNewCode = (prefix: string) => {
@@ -188,13 +201,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setDocumentNonBlocking(sessionDocRef, sessionData, {});
       
-      setSession(prev => ({
-        ...prev,
-        status: 'active_first',
-        readableCode,
-        qrCodeValue
-      }))
-
       toast({ title: 'Session Started', description: `Students can mark attendance. Late after ${lateAfterMinutes} minutes.` });
     }, (error) => {
         toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
@@ -204,15 +210,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => {
     if (!sessionDocRef) return;
     deleteDocumentNonBlocking(sessionDocRef);
-    setSession({ // Reset local state immediately
+    setSession(prev => ({ // Reset local state immediately
+        ...prev,
         status: 'ended',
         qrCodeValue: '',
         readableCode: '',
-        startTime: null,
-        lateCutoff: null,
-        secondScanTime: null,
-        secondScanReason: null,
-    });
+    }));
     toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
   },[toast, sessionDocRef]);
 
@@ -233,7 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
             return false;
         }
-         toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
+        toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
       } else {
         toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
         return false;
@@ -266,15 +269,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } else {
             toastDescription = 'You are marked as PRESENT.';
         }
-
-        newAttendance.set(studentId, {
+        
+        const updatedRecord: AttendanceRecord = {
           ...studentRecord,
           firstScanStatus,
           minutesLate,
           firstScanTimestamp: now,
-          // Tentatively set final status, will be updated by second scan
+          // Tentatively set final status, will be updated by second scan logic
           finalStatus: firstScanStatus, 
-        });
+        };
+        newAttendance.set(studentId, updatedRecord);
 
       } else if (session.status === 'active_second') {
         if (studentRecord.firstScanStatus === 'absent') {
@@ -285,14 +289,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
            toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
            return false;
         }
-
-        newAttendance.set(studentId, {
+        
+        const updatedRecord: AttendanceRecord = {
           ...studentRecord,
           secondScanStatus: 'present',
           secondScanTimestamp: now,
-           // Final status is determined by first scan status
+           // Final status is determined by first scan status, now confirmed with second scan
           finalStatus: studentRecord.firstScanStatus,
-        });
+        };
+        newAttendance.set(studentId, updatedRecord);
         toastDescription = 'Your presence has been verified!';
       }
 
