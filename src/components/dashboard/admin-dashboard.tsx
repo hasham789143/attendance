@@ -4,12 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut } from 'lucide-react';
+import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Progress } from '../ui/progress';
 import { RegisterUserDialog } from './register-user-dialog';
 import { QrCodeDisplay } from './qr-code-display';
 import { StartSessionDialog } from './start-session-dialog';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { format } from 'date-fns';
+
 
 function AiVerifier() {
     const { session, generateSecondQrCode, activateSecondQr, attendance } = useStore();
@@ -76,11 +80,42 @@ function AttendanceList() {
     }
     return '—';
   }
+  
+  const downloadPdf = () => {
+    const doc = new jsPDF();
+    const tableColumn = ["Roll Number", "Name", "Status", "Last Scan"];
+    const tableRows: any[] = [];
+
+    sortedAttendance.forEach(record => {
+      const recordData = [
+        record.student.roll || 'N/A',
+        record.student.name,
+        record.finalStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        getTime(record)
+      ];
+      tableRows.push(recordData);
+    });
+
+    doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 20,
+        didDrawPage: function (data) {
+            doc.setFontSize(20);
+            doc.text("Attendance Report", data.settings.margin.left, 15);
+        }
+    });
+    doc.save(`attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+  };
 
   return (
     <Card className="col-span-1 lg:col-span-2">
-      <CardHeader>
+      <CardHeader className='flex-row items-center justify-between'>
         <CardTitle>Live Attendance Roster</CardTitle>
+         <Button onClick={downloadPdf} variant="outline" size="sm">
+            <Download className="mr-2 h-4 w-4" />
+            Download PDF
+        </Button>
       </CardHeader>
       <CardContent className="max-h-[600px] overflow-y-auto">
         <Table>
