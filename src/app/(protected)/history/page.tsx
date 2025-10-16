@@ -4,7 +4,7 @@ import { History as HistoryIcon } from "lucide-react";
 export default function HistoryPage() {
     return (
         <div>
-            <h1 class="text-2xl font-bold font-headline mb-4">My Attendance History</h1>
+            <h1 className="text-2xl font-bold font-headline mb-4">My Attendance History</h1>
             <Card>
                 <CardHeader>
                     <CardTitle>Past Records</CardTitle>

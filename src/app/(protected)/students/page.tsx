@@ -25,7 +25,7 @@ export default function StudentsPage() {
 
   return (
     <div>
-      <h1 class="text-2xl font-bold font-headline mb-4">Student Roster</h1>
+      <h1 className="text-2xl font-bold font-headline mb-4">Student Roster</h1>
       <Card>
         <CardHeader>
           <CardTitle>All Students</CardTitle>
