@@ -64,10 +64,10 @@ const prompt = ai.definePrompt({
 
   Based on these factors, determine the optimal time (in minutes from the END of the break) to display the second QR code. The optimal time should be no later than half the remaining class time, but also no earlier than 2 minutes after the break ends to allow students to return to the classroom.
 
-  Output:
+  Output the result as a valid JSON object. For example:
   {{
-    "displayTimeMinutesFromBreakEnd": <optimal display time in minutes>,
-    "reasoning": <brief explanation for the chosen display time>
+    "displayTimeMinutesFromBreakEnd": 15,
+    "reasoning": "With a moderate absence rate, displaying the QR code 15 minutes after the break provides a good balance between catching students who leave and not penalizing those who return on time."
   }}
   `,
 });
