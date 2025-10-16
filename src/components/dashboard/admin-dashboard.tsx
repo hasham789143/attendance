@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download } from 'lucide-react';
+import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Progress } from '../ui/progress';
 import { RegisterUserDialog } from './register-user-dialog';
@@ -14,72 +14,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
 
-
-function AiVerifier() {
-    const { session, generateSecondQrCode, activateSecondQr, attendance } = useStore();
-    const [remainingTime, setRemainingTime] = useState('60');
-    const [breakTime, setBreakTime] = useState('10');
-
-    const presentCount = useMemo(() => Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length, [attendance]);
-    
-    if (session.status !== 'active_first' || presentCount === 0) return null;
-
-    const handleGenerate = () => {
-        const remaining = parseInt(remainingTime, 10);
-        const breakLen = parseInt(breakTime, 10);
-        generateSecondQrCode(remaining, breakLen);
-    }
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bot /> AI-Powered Second Scan</CardTitle>
-                <CardDescription>Provide class and break times to let the AI calculate the optimal moment for the second QR scan.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {session.secondScanTime ? (
-                    <div>
-                        <p className="text-sm font-semibold">AI Recommendation:</p>
-                        <p className="text-lg text-primary">{`Display 2nd QR at ${session.secondScanTime} minutes after break.`}</p>
-                        <p className="text-xs text-muted-foreground">{session.secondScanReason}</p>
-                         <Button onClick={activateSecondQr} className="mt-4 w-full">
-                            <ScanLine className="mr-2 h-4 w-4" /> Activate Second Scan Now
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                         <div className="space-y-2">
-                            <Label htmlFor="remaining-time">Remaining Class Time (minutes)</Label>
-                            <Input 
-                                id="remaining-time" 
-                                type="number" 
-                                value={remainingTime} 
-                                onChange={(e) => setRemainingTime(e.target.value)}
-                                placeholder="e.g., 60"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="break-time">Break Length (minutes)</Label>
-                            <Input 
-                                id="break-time" 
-                                type="number" 
-                                value={breakTime} 
-                                onChange={(e) => setBreakTime(e.target.value)}
-                                placeholder="e.g., 10"
-                            />
-                        </div>
-                        <Button onClick={handleGenerate} className="w-full">
-                            Get Optimal Time
-                        </Button>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
-    )
-}
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
   const { attendance } = useStore();
@@ -191,7 +126,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
 
 export function AdminDashboard() {
-  const { session, attendance, students, endSession } = useStore();
+  const { session, attendance, students, endSession, activateSecondQr } = useStore();
   const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
   
   const { present, absent, leftEarly } = useMemo(() => {
@@ -294,7 +229,19 @@ export function AdminDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 space-y-6">
                   <QrCodeDisplay />
-                  <AiVerifier />
+                  {session.status === 'active_first' && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Second Scan</CardTitle>
+                            <CardDescription>When you are ready, activate the second scan to verify which students are still present.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button onClick={activateSecondQr} className="w-full">
+                                <ScanLine className="mr-2 h-4 w-4" /> Activate Second Scan
+                            </Button>
+                        </CardContent>
+                    </Card>
+                  )}
                 </div>
                 <AttendanceList filter={filter} />
             </div>

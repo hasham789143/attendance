@@ -43,7 +43,6 @@ type StoreContextType = {
   startSession: (lateAfterMinutes: number) => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
-  generateSecondQrCode: (remainingClassLengthMinutes: number, breakLengthMinutes: number) => Promise<void>;
   activateSecondQr: () => void;
 };
 
@@ -383,32 +382,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
 
 }, [session, firestore, devicesInUse, toast]);
   
-  const generateSecondQrCode = useCallback(async (remainingClassLengthMinutes: number, breakLengthMinutes: number) => {
-    const presentCount = Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length;
-    const totalStudents = students.length;
-    if (totalStudents === 0) {
-        toast({variant: 'destructive', title: 'No students found', description: 'Cannot generate second QR code without students.'});
-        return;
-    }
-    const absenceRateAfterBreak = totalStudents > 0 ? ((totalStudents - presentCount) / totalStudents) * 100 : 0;
-    
-    try {
-      const result = await getOptimalQrDisplayTime({ 
-        absenceRateAfterBreak, 
-        remainingClassLengthMinutes,
-        breakLengthMinutes
-      });
-      setSession(prev => ({
-        ...prev,
-        secondScanTime: result.displayTimeMinutesFromBreakEnd,
-        secondScanReason: result.reasoning
-      }));
-       toast({ title: 'AI Recommendation Ready', description: `AI suggests the 2nd scan at ${result.displayTimeMinutesFromBreakEnd} minutes after the break.` });
-    } catch (error) {
-      console.error(error);
-      toast({ variant: 'destructive', title: 'AI Error', description: 'Could not get recommendation.' });
-    }
-  }, [attendance, toast, students]);
   
   const activateSecondQr = useCallback(async () => {
     if(!firestore) return;
@@ -436,9 +409,8 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
     startSession,
     endSession,
     markAttendance,
-    generateSecondQrCode,
     activateSecondQr,
-  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, generateSecondQrCode, activateSecondQr]);
+  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateSecondQr]);
 
 
   return (
