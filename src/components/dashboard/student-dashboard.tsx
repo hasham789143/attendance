@@ -86,12 +86,13 @@ export function StudentDashboard() {
     }
   };
   
-  const handleScanResult = (result: string) => {
-    // sound is heard, now show confirmation
-    if(result) {
-        setScannedData(result);
+  const handleScanResult = (result: any) => {
+    // The result from the scanner can be an array or a single object
+    const resultData = Array.isArray(result) ? result[0]?.rawValue : result?.rawValue;
+    if (resultData) {
+      setScannedData(resultData);
     }
-  }
+  };
 
   const handleError = (error: Error) => {
     if (error) {
@@ -251,8 +252,17 @@ export function StudentDashboard() {
                     
                     {!isLoading && !scannedData && hasCameraPermission && (
                       <Scanner
-                          onResult={handleScanResult}
+                          onScan={handleScanResult}
                           onError={handleError}
+                          components={{
+                            audio: true,
+                            finder: true,
+                            video: videoRef.current ? () => <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted /> : undefined,
+                          }}
+                          options={{
+                            delayBetweenScanAttempts: 500,
+                            delayBetweenScanSuccess: 1000,
+                          }}
                       />
                     )}
 
