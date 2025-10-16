@@ -237,43 +237,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     try {
         const batch = writeBatch(firestore);
-
-        // 1. Create a reference for the new document in the main 'sessions' collection (for archiving)
         const archiveSessionRef = doc(collection(firestore, "sessions"));
-        
-        // 2. Set the data for the archived session document
         batch.set(archiveSessionRef, dbSession);
 
-        // 3. Iterate over the LIVE attendance map to create the final record
-        attendance.forEach((liveRecord, studentId) => {
-            // 4. Convert Date objects to ISO strings for Firestore compatibility
-            const serializableRecord = {
-                ...liveRecord,
-                firstScanTimestamp: liveRecord.firstScanTimestamp ? liveRecord.firstScanTimestamp.toISOString() : null,
-                secondScanTimestamp: liveRecord.secondScanTimestamp ? liveRecord.secondScanTimestamp.toISOString() : null,
+        // Iterate over the FULL student list to ensure every student has a record
+        students.forEach((student) => {
+            const liveRecord = attendance.get(student.uid);
+            
+            // Create a final record for archiving
+            const finalRecordForArchive = {
+                student: student,
+                firstScanStatus: liveRecord?.firstScanStatus || 'absent',
+                secondScanStatus: liveRecord?.secondScanStatus || (liveRecord?.firstScanStatus !== 'absent' ? 'absent' : 'n/a'),
+                finalStatus: liveRecord?.finalStatus || 'absent',
+                firstScanTimestamp: liveRecord?.firstScanTimestamp?.toISOString() || null,
+                secondScanTimestamp: liveRecord?.secondScanTimestamp?.toISOString() || null,
+                minutesLate: liveRecord?.minutesLate || 0,
             };
 
-            // 5. Create a reference for this student's record within the archived session's 'records' sub-collection
             const recordRef = doc(collection(firestore, 'sessions', archiveSessionRef.id, 'records'));
-            
-            // 6. Set the data for the student's attendance record
-            batch.set(recordRef, serializableRecord);
+            batch.set(recordRef, finalRecordForArchive);
+        });
+        
+        // Delete all records in the subcollection first
+        const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
+        recordsSnapshot.forEach(recordDoc => {
+            batch.delete(doc(firestore, 'sessions', 'current', 'records', recordDoc.id));
         });
 
-        // 7. Delete the 'current' session document and its subcollection (requires separate calls for subcollections if not using functions)
-        // For now, we just delete the main doc. Subcollection needs manual cleanup or a cloud function.
+        // After deleting subcollection, delete the main session doc
         batch.delete(sessionDocRef);
 
-        // 8. Commit all the batched writes to Firestore
         await batch.commit();
 
-        toast({ title: 'Session Ended', description: 'Attendance has been archived and is now closed.' });
+        toast({ title: 'Session Ended', description: 'Attendance has been archived.' });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to archive session:", error);
-        toast({ variant: 'destructive', title: 'Error Ending Session', description: 'Could not archive records. Please try again.' });
+        toast({ variant: 'destructive', title: 'Error Ending Session', description: error.message || 'Could not archive records.' });
     }
-}, [sessionDocRef, dbSession, firestore, attendance, toast]);
+}, [sessionDocRef, dbSession, firestore, students, attendance, toast]);
 
 
 const markAttendance = useCallback(async (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => {
@@ -310,8 +313,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
             return;
         }
-        toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
-
+        
         let firstScanStatus: 'present' | 'late' = 'present';
         let minutesLate = 0;
         const now = new Date();
@@ -350,7 +352,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
             return;
         }
-        toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
         
         const now = new Date();
         const updates = {

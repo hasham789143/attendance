@@ -1,6 +1,6 @@
 'use client';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, limit } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 import { AttendanceSession } from '@/models/backend';
 import { SessionHistory } from '@/components/dashboard/session-history';

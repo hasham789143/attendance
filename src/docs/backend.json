@@ -97,7 +97,8 @@
         },
         "firstScanTimestamp": { "type": "string", "format": "date-time" },
         "secondScanTimestamp": { "type": "string", "format": "date-time" },
-        "minutesLate": { "type": "number" }
+        "minutesLate": { "type": "number" },
+        "deviceId": { "type": "string" }
       },
       "required": [ "student", "firstScanStatus", "secondScanStatus", "finalStatus" ]
     },
@@ -127,6 +128,10 @@
     "/sessions/current/records/{userId}": {
       "schema": { "$ref": "#/entities/AttendanceRecord" },
       "description": "Stores the live attendance records for each student in the currently active session."
+    },
+    "/sessions/{sessionId}": {
+        "schema": { "$ref": "#/entities/AttendanceSession" },
+        "description": "Stores an archived attendance session."
     },
     "/sessions/{sessionId}/records/{recordId}": {
       "schema": { "$ref": "#/entities/AttendanceRecord" },

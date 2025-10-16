@@ -9,7 +9,7 @@ import { Loader2, QrCode, CheckCircle, MapPin } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
-import { getDeviceId, getDistance } from '@/lib/utils';
+import { getDeviceId } from '@/lib/utils';
 
 export function StudentDashboard() {
   const { userProfile } = useAuth();
@@ -136,59 +136,44 @@ export function StudentDashboard() {
 
     const { finalStatus, firstScanStatus, secondScanStatus, minutesLate } = record;
     
-    switch (finalStatus) {
-      case 'present':
-        return (
-          <div className="text-center">
-            <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></div>
-            <p className="text-muted-foreground">Both scans completed. Well done!</p>
-          </div>
-        );
-      case 'left_early':
-         if (firstScanStatus === 'late') {
-          return (
-            <div className="text-center">
-              <div className="text-lg">Scan 1: <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge></div>
-              <p className="text-muted-foreground">Waiting for the second verification scan.</p>
-            </div>
-          );
-        }
-        return (
-          <div className="text-center">
-             <div className="text-lg">Scan 1: <Badge className="bg-green-500">Completed</Badge></div>
-            <p className="text-muted-foreground">Waiting for the second verification scan.</p>
-          </div>
-        );
-      case 'absent':
-        if(secondScanStatus === 'absent' && firstScanStatus !== 'absent') {
-          return (
-            <div className="text-center">
-              <div className="text-lg">You are marked <Badge variant="secondary" className='bg-orange-500'>Early Out</Badge></div>
-              <p className="text-muted-foreground">You did not complete the second scan.</p>
-            </div>
-          );
-        }
-        return (
-          <div className="text-center">
-            <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
-            <p className="text-muted-foreground">Scan the QR code from the screen to mark your attendance.</p>
-          </div>
-        );
-      case 'late':
-        return (
+    // Logic based on finalStatus first
+    if (finalStatus === 'present') {
+      return (
+        <div className="text-center">
+          <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></div>
+          <p className="text-muted-foreground">Both scans completed. Well done!</p>
+        </div>
+      );
+    }
+
+    if (finalStatus === 'late') {
+       return (
           <div className="text-center">
             <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge></div>
              <p className="text-muted-foreground">Both scans completed. Well done!</p>
           </div>
         );
-      default:
-        return (
-          <div className="text-center">
-            <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
-            <p className="text-muted-foreground">Scan the QR code to begin.</p>
-          </div>
-        );
     }
+    
+    if (finalStatus === 'left_early') {
+      const scan1Badge = firstScanStatus === 'late' 
+          ? <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge>
+          : <Badge className="bg-green-500">Completed</Badge>;
+      return (
+        <div className="text-center">
+          <div className="text-lg">Scan 1: {scan1Badge}</div>
+          <p className="text-muted-foreground">Waiting for the second verification scan.</p>
+        </div>
+      );
+    }
+    
+    // Default to absent
+    return (
+      <div className="text-center">
+        <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
+        <p className="text-muted-foreground">Scan the QR code to mark your attendance.</p>
+      </div>
+    );
   };
 
   const shouldShowScannerButton = () => {
@@ -308,7 +293,7 @@ export function StudentDashboard() {
                             onScan={handleScanResult}
                             onError={handleError}
                             components={{
-                              audio: true,
+                              audio: false,
                               finder: true,
                             }}
                             options={{
