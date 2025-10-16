@@ -9,6 +9,7 @@ import { Loader2, QrCode, CheckCircle } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
+import { getDeviceId } from '@/lib/utils';
 
 export function StudentDashboard() {
   const { userProfile } = useAuth();
@@ -63,6 +64,7 @@ export function StudentDashboard() {
   const processScan = (result: string) => {
     if (result && userProfile) {
       setIsLoading(true);
+      const deviceId = getDeviceId();
 
       // Simulate a 2-second delay for user feedback
       setTimeout(() => {
@@ -70,7 +72,7 @@ export function StudentDashboard() {
           (position) => {
             const { latitude, longitude } = position.coords;
             const code = result.split(':')[1] || result;
-            markAttendance(userProfile.uid, code, { lat: latitude, lng: longitude });
+            markAttendance(userProfile.uid, code, { lat: latitude, lng: longitude }, deviceId);
             resetScanner();
           },
           (error) => {
@@ -89,7 +91,7 @@ export function StudentDashboard() {
   const handleScanResult = (result: any) => {
     // The result from the scanner can be an array or a single object
     const resultData = Array.isArray(result) ? result[0]?.rawValue : result?.rawValue;
-    if (resultData) {
+    if (resultData && !scannedData) {
       setScannedData(resultData);
     }
   };
@@ -232,7 +234,6 @@ export function StudentDashboard() {
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto text-center">
-                    {/* This video tag is crucial for the scanner to function */}
                     <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
 
                     {isLoading && (
@@ -257,7 +258,6 @@ export function StudentDashboard() {
                           components={{
                             audio: true,
                             finder: true,
-                            video: videoRef.current ? () => <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted /> : undefined,
                           }}
                           options={{
                             delayBetweenScanAttempts: 500,

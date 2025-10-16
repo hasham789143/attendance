@@ -25,4 +25,17 @@ export function getDistance(
   return d;
 }
 
-    
+// Function to get a unique device ID
+export function getDeviceId(): string {
+  if (typeof window === 'undefined') {
+    return 'server';
+  }
+
+  let deviceId = localStorage.getItem('deviceId');
+  if (!deviceId) {
+    // crypto.randomUUID() is a modern, secure way to get a UUID
+    deviceId = self.crypto.randomUUID();
+    localStorage.setItem('deviceId', deviceId);
+  }
+  return deviceId;
+}
