@@ -252,13 +252,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
           return false;
         }
-
-        let firstScanStatus: 'present' | 'late' = 'present';
-        let minutesLate = 0;
         
         if (session.lateCutoff && now > session.lateCutoff) {
+            toast({ variant: 'destructive', title: 'Scan failed', description: 'The time to mark your attendance has expired.'});
+            return false;
+        }
+
+        let firstScanStatus: 'present' | 'late' = 'present';
+        let finalStatus: 'present' | 'late' = 'present';
+        let minutesLate = 0;
+        
+        const effectiveLateCutoff = session.lateCutoff || new Date(session.startTime.getTime() + 10 * 60000);
+        if (now > effectiveLateCutoff) {
           firstScanStatus = 'late';
-          minutesLate = Math.round((now.getTime() - session.lateCutoff.getTime()) / 60000);
+          finalStatus = 'late';
+          minutesLate = Math.round((now.getTime() - effectiveLateCutoff.getTime()) / 60000);
           toastDescription = `You are marked as LATE (${minutesLate} min).`;
         } else {
           toastDescription = 'You are marked as PRESENT.';
@@ -269,7 +277,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           firstScanStatus,
           minutesLate,
           firstScanTimestamp: now,
-          finalStatus: 'present', // Tentatively present
+          finalStatus: finalStatus, // Tentatively present or late
         });
 
       } else if (session.status === 'active_second') {
@@ -286,7 +294,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...studentRecord,
           secondScanStatus: 'present',
           secondScanTimestamp: now,
-          finalStatus: 'present', // Fully present
+           // Keep 'late' status if they were late, otherwise 'present'
+          finalStatus: studentRecord.firstScanStatus === 'late' ? 'late' : 'present',
         });
         toastDescription = 'Your presence has been verified!';
       }
