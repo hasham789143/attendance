@@ -82,43 +82,24 @@
       "type": "object",
       "description": "Represents a single attendance record for a user in a specific session.",
       "properties": {
-        "uid": {
+        "student": { "$ref": "#/entities/User" },
+        "firstScanStatus": {
           "type": "string",
-          "description": "Reference to User. Unique identifier of the user for whom the attendance is recorded."
+          "enum": ["present", "late", "absent"]
         },
-        "name": { "type": "string" },
-        "roll": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "status": {
+        "secondScanStatus": {
           "type": "string",
-          "description": "Attendance status (e.g., 'present')."
+          "enum": ["present", "absent", "n/a"]
         },
-        "timestamp": {
+        "finalStatus": {
           "type": "string",
-          "description": "Timestamp when the attendance was recorded.",
-          "format": "date-time"
+          "enum": ["present", "late", "absent", "left_early"]
         },
-        "photoURL": {
-          "type": "string",
-          "description": "URL of the photo taken during attendance, if required."
-        },
-        "deviceId": {
-          "type": "string",
-          "description": "Unique identifier of the device used to mark attendance."
-        },
-        "distance": {
-          "type": "number",
-          "description": "Distance between the user and the session location when attendance was marked."
-        }
+        "firstScanTimestamp": { "type": "string", "format": "date-time" },
+        "secondScanTimestamp": { "type": "string", "format": "date-time" },
+        "minutesLate": { "type": "number" }
       },
-      "required": [
-        "uid",
-        "name",
-        "email",
-        "status",
-        "timestamp",
-        "deviceId"
-      ]
+      "required": [ "student", "firstScanStatus", "secondScanStatus", "finalStatus" ]
     },
     "Settings": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -142,6 +123,10 @@
     "/sessions/current": {
       "schema": { "$ref": "#/entities/AttendanceSession" },
       "description": "Stores the current active attendance session. This is a single document."
+    },
+    "/sessions/current/records/{userId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Stores the live attendance records for each student in the currently active session."
     },
     "/sessions/{sessionId}/records/{recordId}": {
       "schema": { "$ref": "#/entities/AttendanceRecord" },

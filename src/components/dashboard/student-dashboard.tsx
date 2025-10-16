@@ -66,11 +66,9 @@ export function StudentDashboard() {
       setIsLoading(true);
       const deviceId = getDeviceId();
 
-      // We need to get location first, then mark attendance
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          // The markAttendance function will handle all toasts and UI feedback
           markAttendance(userProfile.uid, result, { lat: latitude, lng: longitude }, deviceId);
           resetScanner();
         },
@@ -89,37 +87,7 @@ export function StudentDashboard() {
     }
   };
   
-  const handleCheckRange = () => {
-    if (!session.lat || !session.lng) {
-      toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
-      return;
-    }
-    
-    setIsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const distance = getDistance({lat: session.lat!, lng: session.lng!}, {lat: latitude, lng: longitude});
-        if (distance <= 100) { // 100 meters
-             toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
-        } else {
-             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
-        }
-        setIsLoading(false);
-      },
-      (error) => {
-        toast({
-          variant: 'destructive',
-          title: 'Location Error',
-          description: `Could not get location: ${error.message}. Please enable location services.`,
-        });
-        setIsLoading(false);
-      }
-    );
-  };
-  
   const handleScanResult = (result: any) => {
-    // The result from the scanner can be an array or a single object
     const resultData = Array.isArray(result) ? result[0]?.rawValue : result?.rawValue;
     if (resultData && !scannedData) {
       setScannedData(resultData);
@@ -166,7 +134,7 @@ export function StudentDashboard() {
       );
     }
 
-    const { finalStatus, firstScanStatus, secondScanStatus, minutesLate, firstScanTimestamp } = record;
+    const { finalStatus, firstScanStatus, secondScanStatus, minutesLate } = record;
     
     switch (finalStatus) {
       case 'present':
@@ -180,33 +148,40 @@ export function StudentDashboard() {
          if (firstScanStatus === 'late') {
           return (
             <div className="text-center">
-              <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge> (Scan 1)</div>
-              <p className="text-muted-foreground">Recorded at {firstScanTimestamp?.toLocaleTimeString()} ({minutesLate} mins late). Waiting for 2nd scan.</p>
+              <div className="text-lg">Scan 1: <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge></div>
+              <p className="text-muted-foreground">Waiting for the second verification scan.</p>
             </div>
           );
         }
         return (
           <div className="text-center">
-             <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge> (Scan 1)</div>
+             <div className="text-lg">Scan 1: <Badge className="bg-green-500">Completed</Badge></div>
             <p className="text-muted-foreground">Waiting for the second verification scan.</p>
           </div>
         );
       case 'absent':
+        if(secondScanStatus === 'absent' && firstScanStatus !== 'absent') {
+          return (
+            <div className="text-center">
+              <div className="text-lg">You are marked <Badge variant="secondary" className='bg-orange-500'>Early Out</Badge></div>
+              <p className="text-muted-foreground">You did not complete the second scan.</p>
+            </div>
+          );
+        }
         return (
           <div className="text-center">
             <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
             <p className="text-muted-foreground">Scan the QR code from the screen to mark your attendance.</p>
           </div>
         );
-      case 'late': // This is a final status, implies both scans done.
+      case 'late':
         return (
           <div className="text-center">
-            <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></div>
-             <p className="text-muted-foreground">Recorded at {firstScanTimestamp?.toLocaleTimeString()} ({minutesLate} minutes late).</p>
+            <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge></div>
+             <p className="text-muted-foreground">Both scans completed. Well done!</p>
           </div>
         );
       default:
-        // Fallback for any other state
         return (
           <div className="text-center">
             <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
@@ -228,6 +203,46 @@ export function StudentDashboard() {
     return false;
   }
 
+   const checkRange = () => {
+    if (!session.lat || !session.lng) {
+      toast({
+        variant: 'destructive',
+        title: 'Session Error',
+        description: 'The session location has not been set by the admin.',
+      });
+      return;
+    }
+    
+    setIsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const distance = getDistance({ lat: session.lat!, lng: session.lng! }, { lat: latitude, lng: longitude });
+        
+        if (distance <= 100) {
+          toast({
+            title: 'Location Verified',
+            description: `You are within range (${Math.round(distance)}m).`,
+          });
+        } else {
+          toast({
+            variant: 'destructive',
+            title: 'Out of Range',
+            description: `You are too far from the session location (${Math.round(distance)}m).`,
+          });
+        }
+        setIsLoading(false);
+      },
+      (error) => {
+        toast({
+          variant: 'destructive',
+          title: 'Location Error',
+          description: `Could not get location: ${error.message}. Please enable location services.`,
+        });
+        setIsLoading(false);
+      }
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -260,6 +275,13 @@ export function StudentDashboard() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
+              {session.status !== 'inactive' && session.status !== 'ended' && !shouldShowScannerButton() && (
+                 <Button onClick={checkRange} variant="outline" disabled={isLoading}>
+                    <MapPin className="mr-2 h-5 w-5" />
+                    Check Range
+                </Button>
+              )}
+
             {shouldShowScannerButton() && (
               <>
                 {showScanner ? (

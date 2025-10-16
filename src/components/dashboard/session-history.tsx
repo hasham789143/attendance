@@ -15,6 +15,7 @@ import { AttendanceRecord, UserProfile } from '../providers/store-provider';
 import { EditAttendanceDialog } from './edit-attendance-dialog';
 
 type StoredAttendanceRecord = Omit<AttendanceRecord, 'student' | 'firstScanTimestamp' | 'secondScanTimestamp'> & { 
+  id: string; // id is on the document, not in the data
   student: { uid: string, name: string, roll?: string, email: string },
   firstScanTimestamp: string | null;
   secondScanTimestamp: string | null;
@@ -22,7 +23,7 @@ type StoredAttendanceRecord = Omit<AttendanceRecord, 'student' | 'firstScanTimes
 
 export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; sessionDate: Date }) {
   const { firestore } = useFirebase();
-  const [recordToEdit, setRecordToEdit] = useState<StoredAttendanceRecord & { id: string } | null>(null);
+  const [recordToEdit, setRecordToEdit] = useState<StoredAttendanceRecord | null>(null);
 
   const recordsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -70,13 +71,13 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
         startY: 20,
         didDrawPage: function (data) {
             doc.setFontSize(20);
-            doc.text(`Attendance Report - ${format(sessionDate, 'yyyy-MM-dd')}`, data.settings.margin.left, 15);
+            doc.text(`Attendance Report - ${format(sessionDate, 'PPP')}`, data.settings.margin.left, 15);
         }
     });
     doc.save(`attendance-report-${format(sessionDate, 'yyyy-MM-dd')}.pdf`);
   };
 
-  const handleEdit = (record: StoredAttendanceRecord & { id: string }) => {
+  const handleEdit = (record: StoredAttendanceRecord) => {
     setRecordToEdit(record);
   };
   
