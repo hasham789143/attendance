@@ -4,19 +4,21 @@ import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, doc } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
 import { AttendanceSession } from '@/models/backend';
 
-type AttendanceStatus = 'present' | 'late' | 'absent';
-type StudentLocation = { lat: number; lng: number };
+type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
 
 // Student is now UserProfile
 export type AttendanceRecord = {
   student: UserProfile;
-  status: AttendanceStatus;
-  timestamp: Date | null;
+  firstScanStatus: 'present' | 'late' | 'absent';
+  secondScanStatus: 'present' | 'absent' | 'n/a';
+  finalStatus: AttendanceStatus;
+  firstScanTimestamp: Date | null;
+  secondScanTimestamp: Date | null;
   minutesLate: number;
 };
 export type AttendanceMap = Map<string, AttendanceRecord>;
@@ -27,7 +29,7 @@ export type Session = {
   qrCodeValue: string;
   readableCode: string;
   startTime: Date | null;
-  firstScanCutoff: Date | null;
+  lateCutoff: Date | null;
   secondScanTime: number | null;
   secondScanReason: string | null;
   lat?: number;
@@ -38,7 +40,7 @@ type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
   students: UserProfile[];
-  startSession: () => void;
+  startSession: (lateAfterMinutes: number) => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string, location: StudentLocation) => boolean;
   generateSecondQrCode: () => Promise<void>;
@@ -65,9 +67,6 @@ function useStudents() {
             return allStudents || [];
         }
         if (userProfile?.role === 'viewer') {
-            // In a real app, you might fetch just the single student's profile
-            // For now, if they are a viewer, they don't need the full list.
-            // Returning the userProfile in an array if it exists.
             return userProfile ? [userProfile] : [];
         }
         return [];
@@ -95,7 +94,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     qrCodeValue: '',
     readableCode: '',
     startTime: null,
-    firstScanCutoff: null,
+    lateCutoff: null,
     secondScanTime: null,
     secondScanReason: null,
   });
@@ -105,8 +104,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (dbSession && students.length > 0) {
       const startTime = dbSession.createdAt ? new Date(dbSession.createdAt) : new Date();
-      // Set the cutoff for being marked 'late' to 10 minutes after session start
-      const firstScanCutoff = new Date(startTime.getTime() + 10 * 60 * 1000); 
+      const lateCutoff = dbSession.lateAfterMinutes ? new Date(startTime.getTime() + dbSession.lateAfterMinutes * 60 * 1000) : null;
       const { readableCode } = parseQrCodeValue(dbSession.key);
       
       setSession(prevSession => {
@@ -115,7 +113,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if(prevSession.qrCodeValue !== dbSession.key) {
             const newAttendance = new Map<string, AttendanceRecord>();
             students.forEach(student => {
-                newAttendance.set(student.uid, { student, status: 'absent', timestamp: null, minutesLate: 0 });
+                newAttendance.set(student.uid, { 
+                  student, 
+                  firstScanStatus: 'absent',
+                  secondScanStatus: 'n/a',
+                  finalStatus: 'absent',
+                  firstScanTimestamp: null,
+                  secondScanTimestamp: null,
+                  minutesLate: 0 
+                });
             });
             setAttendance(newAttendance);
         }
@@ -126,7 +132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           qrCodeValue: dbSession.key,
           readableCode,
           startTime,
-          firstScanCutoff,
+          lateCutoff,
           lat: dbSession.lat,
           lng: dbSession.lng,
         };
@@ -138,7 +144,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         qrCodeValue: '',
         readableCode: '',
         startTime: null,
-        firstScanCutoff: null,
+        lateCutoff: null,
         secondScanTime: null,
         secondScanReason: null,
       });
@@ -158,7 +164,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { prefix: parts[0], readableCode: parts[1], timestamp: parts[2] };
   };
 
-  const startSession = useCallback(() => {
+  const startSession = useCallback((lateAfterMinutes: number) => {
     if (!navigator.geolocation) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
@@ -175,6 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         createdAt: new Date().toISOString(),
         lat: latitude,
         lng: longitude,
+        lateAfterMinutes: lateAfterMinutes,
       }
 
       setDocumentNonBlocking(sessionDocRef, sessionData, {});
@@ -186,7 +193,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         qrCodeValue
       }))
 
-      toast({ title: 'Session Started', description: 'Students can now mark their attendance.' });
+      toast({ title: 'Session Started', description: `Students can mark attendance. Late after ${lateAfterMinutes} minutes.` });
     }, (error) => {
         toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
     });
@@ -200,7 +207,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         qrCodeValue: '',
         readableCode: '',
         startTime: null,
-        firstScanCutoff: null,
+        lateCutoff: null,
         secondScanTime: null,
         secondScanReason: null,
     });
@@ -230,47 +237,69 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       
       const studentRecord = attendance.get(studentId);
-      // Prevent marking again if status is already 'present' or 'late' for the current session state.
-      if (studentRecord && (studentRecord.status === 'present' || studentRecord.status === 'late')) {
-        toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
+      if (!studentRecord) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not find your student profile.' });
         return false;
       }
 
       const now = new Date();
-      let status: AttendanceStatus = 'present';
-      let minutesLate = 0;
-
-      // Check for lateness only during the first scan
-      if(session.status === 'active_first' && session.firstScanCutoff) {
-          if (now > session.firstScanCutoff) {
-              toast({
-                  variant: 'destructive',
-                  title: 'Scan failed',
-                  description: 'The time to mark your attendance has expired.',
-              });
-              return false;
-          }
-      }
-      
-      const student = students.find(s => s.uid === studentId);
-      if (!student) {
-          toast({ variant: 'destructive', title: 'Error', description: 'Could not find your student profile.' });
-          return false;
-      }
-
-      const newRecord: AttendanceRecord = { student, status, timestamp: now, minutesLate };
       const newAttendance = new Map(attendance);
-      newAttendance.set(studentId, newRecord);
-      setAttendance(newAttendance);
+      let toastMessage = 'Attendance Marked!';
+      let toastDescription = '';
       
-      toast({ title: 'Attendance Marked!', description: `You are marked as ${status}.` });
+      if(session.status === 'active_first') {
+        if(studentRecord.firstScanStatus !== 'absent') {
+          toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
+          return false;
+        }
+
+        let firstScanStatus: 'present' | 'late' = 'present';
+        let minutesLate = 0;
+        
+        if (session.lateCutoff && now > session.lateCutoff) {
+          firstScanStatus = 'late';
+          minutesLate = Math.round((now.getTime() - session.lateCutoff.getTime()) / 60000);
+          toastDescription = `You are marked as LATE (${minutesLate} min).`;
+        } else {
+          toastDescription = 'You are marked as PRESENT.';
+        }
+
+        newAttendance.set(studentId, {
+          ...studentRecord,
+          firstScanStatus,
+          minutesLate,
+          firstScanTimestamp: now,
+          finalStatus: 'present', // Tentatively present
+        });
+
+      } else if (session.status === 'active_second') {
+        if (studentRecord.firstScanStatus === 'absent') {
+          toast({ variant: 'destructive', title: 'First Scan Missed', description: 'You cannot mark the second scan without the first.' });
+          return false;
+        }
+        if (studentRecord.secondScanStatus === 'present') {
+           toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
+           return false;
+        }
+
+        newAttendance.set(studentId, {
+          ...studentRecord,
+          secondScanStatus: 'present',
+          secondScanTimestamp: now,
+          finalStatus: 'present', // Fully present
+        });
+        toastDescription = 'Your presence has been verified!';
+      }
+
+      setAttendance(newAttendance);
+      toast({ title: toastMessage, description: toastDescription });
       return true;
     },
-    [session, attendance, toast, students]
+    [session, attendance, toast]
   );
   
   const generateSecondQrCode = useCallback(async () => {
-    const presentCount = Array.from(attendance.values()).filter(r => r.status !== 'absent').length;
+    const presentCount = Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length;
     const absenceRate = students.length > 0 ? ((students.length - presentCount) / students.length) * 100 : 0;
     const classLengthMinutes = 120; // Assuming a 2-hour class
 
@@ -294,20 +323,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Reset status for everyone who was present or late to absent for the second scan
     const newAttendance = new Map(attendance);
     newAttendance.forEach((record, studentId) => {
-      // Only reset those who were present. Absentees remain absent.
-      if (record.status === 'present' || record.status === 'late') {
+      // If they were present for the first scan, mark them as having left early.
+      // Their final status will become 'present' again if they complete the second scan.
+      if (record.firstScanStatus !== 'absent') {
         newAttendance.set(studentId, { 
           ...record,
-          status: 'absent', // Mark as absent for the second round
-          timestamp: null,
-          minutesLate: 0,
+          secondScanStatus: 'absent',
+          finalStatus: 'left_early',
         });
       }
     });
 
     setAttendance(newAttendance);
     setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
-    toast({ title: 'Second Scan Activated', description: 'Students who left will be marked absent if they do not scan again.' });
+    toast({ title: 'Second Scan Activated', description: 'Students must scan again to be marked fully present.' });
   }, [toast, attendance]);
   
   // QR Code refresh interval (local state update for display)

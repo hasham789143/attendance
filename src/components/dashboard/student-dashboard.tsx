@@ -119,35 +119,76 @@ export function StudentDashboard() {
       )
     }
     
-    if (!record || record.status === 'absent') {
-      return (
+    if (!record) {
+       return (
         <div className="text-center">
-          <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
-          <p className="text-muted-foreground">Scan the QR code from the screen to mark your attendance.</p>
+          <p className="text-muted-foreground">Loading attendance status...</p>
         </div>
       );
     }
-    if (record.status === 'present') {
-      return (
-        <div className="text-center">
-          <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></div>
-          <p className="text-muted-foreground">Attendance recorded at {record.timestamp?.toLocaleTimeString()}.</p>
-        </div>
-      );
-    }
-    if (record.status === 'late') {
-      return (
-        <div className="text-center">
-          <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></div>
-          <p className="text-muted-foreground">Recorded at {record.timestamp?.toLocaleTimeString()} ({record.minutesLate} minutes late).</p>
-        </div>
-      );
+
+    const { finalStatus, firstScanStatus, secondScanStatus, minutesLate, firstScanTimestamp } = record;
+    
+    switch (finalStatus) {
+      case 'present':
+        return (
+          <div className="text-center">
+            <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></div>
+            <p className="text-muted-foreground">Both scans completed. Well done!</p>
+          </div>
+        );
+      case 'left_early':
+        return (
+          <div className="text-center">
+            <div className="text-lg">Your status is <Badge className="bg-orange-500">Left Early</Badge></div>
+            <p className="text-muted-foreground">You missed the second verification scan.</p>
+          </div>
+        );
+      case 'absent':
+        return (
+          <div className="text-center">
+            <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
+            <p className="text-muted-foreground">Scan the QR code from the screen to mark your attendance.</p>
+          </div>
+        );
+      default:
+         if (firstScanStatus === 'late') {
+          return (
+            <div className="text-center">
+              <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></div>
+              <p className="text-muted-foreground">Recorded at {firstScanTimestamp?.toLocaleTimeString()} ({minutesLate} minutes late).</p>
+            </div>
+          );
+        }
+        if (firstScanStatus === 'present') {
+           return (
+            <div className="text-center">
+              <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge> (Scan 1)</div>
+              <p className="text-muted-foreground">Waiting for the second verification scan.</p>
+            </div>
+          );
+        }
+        // Fallback for any other state
+        return (
+          <div className="text-center">
+            <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
+            <p className="text-muted-foreground">Scan the QR code to begin.</p>
+          </div>
+        );
     }
   };
 
-  const shouldShowScannerButton = isClient && 
-    (session.status === 'active_first' || session.status === 'active_second') &&
-    (!myRecord || myRecord.status === 'absent');
+  const shouldShowScannerButton = () => {
+    if (!isClient || !myRecord) return false;
+
+    if (session.status === 'active_first' && myRecord.firstScanStatus === 'absent') {
+      return true;
+    }
+    if (session.status === 'active_second' && myRecord.firstScanStatus !== 'absent' && myRecord.secondScanStatus === 'absent') {
+      return true;
+    }
+    return false;
+  }
 
 
   return (
@@ -163,7 +204,7 @@ export function StudentDashboard() {
           <CardDescription>
             {session.status === 'inactive' || session.status === 'ended'
               ? 'There is no active attendance session.'
-              : `An attendance session is active. Session round: ${session.status === 'active_first' ? '1' : '2'}`}
+              : `An attendance session is active. Scan round: ${session.status === 'active_first' ? '1' : '2'}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -171,7 +212,7 @@ export function StudentDashboard() {
             {getStatusContent(myRecord)}
           </div>
 
-          {shouldShowScannerButton && (
+          {shouldShowScannerButton() && (
             <div className="flex flex-col items-center gap-4">
               {showScanner ? (
                 <div className="w-full max-w-sm mx-auto">

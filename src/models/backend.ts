@@ -23,6 +23,7 @@ export interface AttendanceSession {
     createdAt: string; // ISO 8601 timestamp.
     lat: number;
     lng: number;
+    lateAfterMinutes?: number;
 }
 
 

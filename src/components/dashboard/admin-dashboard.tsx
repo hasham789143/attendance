@@ -4,16 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock, UserPlus } from 'lucide-react';
-import Image from 'next/image';
-import { useMemo } from 'react';
+import { PlayCircle, StopCircle, Bot, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Progress } from '../ui/progress';
 import { RegisterUserDialog } from './register-user-dialog';
 import { QrCodeDisplay } from './qr-code-display';
+import { StartSessionDialog } from './start-session-dialog';
 
 function AiVerifier() {
     const { session, generateSecondQrCode, activateSecondQr, attendance } = useStore();
-    const presentCount = useMemo(() => Array.from(attendance.values()).filter(r => r.status !== 'absent').length, [attendance]);
+    const presentCount = useMemo(() => Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length, [attendance]);
     
     if (session.status !== 'active_first' || presentCount === 0) return null;
 
@@ -47,14 +47,35 @@ function AttendanceList() {
   const { attendance } = useStore();
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
 
-  const getStatusBadge = (status: AttendanceRecord['status']) => {
-    switch (status) {
-      case 'present': return <Badge variant="default" className="bg-green-600">Present</Badge>;
-      case 'late': return <Badge variant="secondary" className="bg-yellow-500">Late</Badge>;
-      case 'absent': return <Badge variant="destructive">Absent</Badge>;
-      default: return <Badge variant="outline">N/A</Badge>;
+  const getStatusBadge = (record: AttendanceRecord) => {
+    const { finalStatus, firstScanStatus, minutesLate } = record;
+
+    switch (finalStatus) {
+      case 'present': 
+        return <Badge variant="default" className="bg-green-600">Present</Badge>;
+      case 'left_early': 
+        return <Badge variant="secondary" className="bg-orange-500">Left Early</Badge>;
+      case 'absent': 
+        return <Badge variant="destructive">Absent</Badge>;
+      case 'late': // This case might not be hit if finalStatus logic is tight
+        return <Badge variant="secondary" className="bg-yellow-500">Late ({minutesLate}m)</Badge>;
+      default: 
+        if (firstScanStatus === 'late') {
+            return <Badge variant="secondary" className="bg-yellow-500">Late ({minutesLate}m)</Badge>;
+        }
+        return <Badge variant="outline">N/A</Badge>;
     }
   };
+
+  const getTime = (record: AttendanceRecord) => {
+    if (record.secondScanTimestamp) {
+      return record.secondScanTimestamp.toLocaleTimeString();
+    }
+    if (record.firstScanTimestamp) {
+      return record.firstScanTimestamp.toLocaleTimeString();
+    }
+    return '—';
+  }
 
   return (
     <Card className="col-span-1 lg:col-span-2">
@@ -68,18 +89,17 @@ function AttendanceList() {
               <TableHead>Roll Number</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Time</TableHead>
+              <TableHead className="text-right">Last Scan</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedAttendance.map(({ student, status, timestamp, minutesLate }) => (
-              <TableRow key={student.uid}>
-                <TableCell className="font-medium">{student.roll || 'N/A'}</TableCell>
-                <TableCell>{student.name}</TableCell>
-                <TableCell>{getStatusBadge(status)}</TableCell>
+            {sortedAttendance.map((record) => (
+              <TableRow key={record.student.uid}>
+                <TableCell className="font-medium">{record.student.roll || 'N/A'}</TableCell>
+                <TableCell>{record.student.name}</TableCell>
+                <TableCell>{getStatusBadge(record)}</TableCell>
                 <TableCell className="text-right">
-                    {timestamp ? timestamp.toLocaleTimeString() : '—'}
-                    {status === 'late' && <span className="text-xs text-destructive ml-2">({minutesLate}m late)</span>}
+                    {getTime(record)}
                 </TableCell>
               </TableRow>
             ))}
@@ -93,19 +113,19 @@ function AttendanceList() {
 
 export function AdminDashboard() {
   const { session, startSession, endSession, attendance, students } = useStore();
-  const { present, late, absent } = useMemo(() => {
-    const counts = { present: 0, late: 0, absent: 0 };
+  
+  const { present, absent, leftEarly } = useMemo(() => {
+    const counts = { present: 0, absent: 0, leftEarly: 0 };
     attendance.forEach(record => {
-        if(record.status === 'present') counts.present++;
-        else if (record.status === 'late') counts.late++;
-        else counts.absent++;
+        if(record.finalStatus === 'present') counts.present++;
+        else if (record.finalStatus === 'left_early') counts.leftEarly++;
+        else if (record.finalStatus === 'absent') counts.absent++;
     });
     return counts;
   }, [attendance]);
   
   const totalStudents = students?.length || 0;
-  const attended = present + late;
-  const attendancePercentage = totalStudents > 0 ? (attended / totalStudents) * 100 : 0;
+  const attendancePercentage = totalStudents > 0 ? (present / totalStudents) * 100 : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -121,9 +141,11 @@ export function AdminDashboard() {
                     </Button>
                 </RegisterUserDialog>
                 {session.status === 'inactive' || session.status === 'ended' ? (
-                    <Button size="lg" onClick={startSession}>
-                        <PlayCircle className="mr-2 h-5 w-5" /> Start New Session
-                    </Button>
+                    <StartSessionDialog>
+                        <Button size="lg">
+                            <PlayCircle className="mr-2 h-5 w-5" /> Start New Session
+                        </Button>
+                    </StartSessionDialog>
                 ) : (
                     <Button size="lg" variant="destructive" onClick={endSession}>
                         <StopCircle className="mr-2 h-5 w-5" /> End Session
@@ -153,11 +175,11 @@ export function AdminDashboard() {
             </Card>
              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Late</CardTitle>
-                    <Clock className="h-4 w-4 text-yellow-500" />
+                    <CardTitle className="text-sm font-medium">Left Early</CardTitle>
+                    <LogOut className="h-4 w-4 text-orange-500" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{late}</div>
+                    <div className="text-2xl font-bold">{leftEarly}</div>
                 </CardContent>
             </Card>
             <Card>
@@ -174,7 +196,7 @@ export function AdminDashboard() {
         {session.status !== 'inactive' && session.status !== 'ended' && (
             <div className="space-y-2">
                 <Progress value={attendancePercentage} />
-                <p className="text-sm text-muted-foreground text-center">{attended} of {totalStudents} students have marked attendance.</p>
+                <p className="text-sm text-muted-foreground text-center">{present} of {totalStudents} students are fully present.</p>
             </div>
         )}
 

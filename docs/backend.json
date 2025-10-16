@@ -62,6 +62,10 @@
         "lng": {
           "type": "number",
           "description": "Longitude of the location where the attendance session is valid."
+        },
+        "lateAfterMinutes": {
+            "type": "number",
+            "description": "The number of minutes after which a student is marked as late."
         }
       },
       "required": [
