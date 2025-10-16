@@ -36,8 +36,8 @@ function AiVerifier() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bot /> AI Mid-Class Verifier</CardTitle>
-                <CardDescription>Use AI to find the best time for a second QR scan to catch students who leave early.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><Bot /> AI-Powered Second Scan</CardTitle>
+                <CardDescription>Provide class and break times to let the AI calculate the optimal moment for the second QR scan.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 {session.secondScanTime ? (
@@ -302,5 +302,3 @@ export function AdminDashboard() {
     </div>
   );
 }
-
-    
