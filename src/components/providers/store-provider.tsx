@@ -254,31 +254,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         
         if (session.lateCutoff && now > session.lateCutoff) {
-            toast({ variant: 'destructive', title: 'Scan failed', description: 'The time to mark your attendance has expired.'});
-            return false;
-        }
-
-        let firstScanStatus: 'present' | 'late' = 'present';
-        let finalStatus: 'present' | 'late' = 'present';
-        let minutesLate = 0;
-        
-        const effectiveLateCutoff = session.lateCutoff || new Date(session.startTime.getTime() + 10 * 60000);
-        if (now > effectiveLateCutoff) {
-          firstScanStatus = 'late';
-          finalStatus = 'late';
-          minutesLate = Math.round((now.getTime() - effectiveLateCutoff.getTime()) / 60000);
-          toastDescription = `You are marked as LATE (${minutesLate} min).`;
+            let firstScanStatus: 'present' | 'late' = 'present';
+            let finalStatus: 'present' | 'late' = 'present';
+            let minutesLate = 0;
+            
+            const effectiveLateCutoff = session.lateCutoff || new Date(session.startTime.getTime() + 10 * 60000);
+            if (now > effectiveLateCutoff) {
+              firstScanStatus = 'late';
+              finalStatus = 'late';
+              minutesLate = Math.round((now.getTime() - effectiveLateCutoff.getTime()) / 60000);
+              toastDescription = `You are marked as LATE (${minutesLate} min).`;
+            } else {
+              toastDescription = 'You are marked as PRESENT.';
+            }
+    
+            newAttendance.set(studentId, {
+              ...studentRecord,
+              firstScanStatus,
+              minutesLate,
+              firstScanTimestamp: now,
+              finalStatus: finalStatus, // Tentatively present or late
+            });
         } else {
-          toastDescription = 'You are marked as PRESENT.';
+             newAttendance.set(studentId, {
+                ...studentRecord,
+                firstScanStatus: 'present',
+                minutesLate: 0,
+                firstScanTimestamp: now,
+                finalStatus: 'present',
+            });
+            toastDescription = 'You are marked as PRESENT.';
         }
-
-        newAttendance.set(studentId, {
-          ...studentRecord,
-          firstScanStatus,
-          minutesLate,
-          firstScanTimestamp: now,
-          finalStatus: finalStatus, // Tentatively present or late
-        });
 
       } else if (session.status === 'active_second') {
         if (studentRecord.firstScanStatus === 'absent') {
@@ -347,19 +353,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
     toast({ title: 'Second Scan Activated', description: 'Students must scan again to be marked fully present.' });
   }, [toast, attendance]);
-  
-  // QR Code refresh interval (local state update for display)
-  useEffect(() => {
-    if (session.status === 'active_first' || session.status === 'active_second') {
-      const interval = setInterval(() => {
-        // This only updates the local state for the QR code display,
-        // The core session `key` in firestore remains the same for the duration of the scan period.
-        const { readableCode } = generateNewCode(session.status === 'active_first' ? 'first' : 'second');
-        setSession(prev => ({...prev, readableCode}));
-      }, 15000); // Refresh every 15 seconds
-      return () => clearInterval(interval);
-    }
-  }, [session.status]);
 
 
   const value = useMemo(() => ({
