@@ -231,9 +231,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       const studentRecord = attendance.get(studentId);
       // Prevent marking again if status is already 'present' or 'late' for the current session state.
-      if(studentRecord && (studentRecord.status === 'present' || studentRecord.status === 'late')) {
-          toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
-          return false;
+      if (studentRecord && (studentRecord.status === 'present' || studentRecord.status === 'late')) {
+        toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
+        return false;
       }
 
       const now = new Date();
@@ -243,8 +243,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Check for lateness only during the first scan
       if(session.status === 'active_first' && session.firstScanCutoff) {
           if (now > session.firstScanCutoff) {
-              status = 'late';
-              minutesLate = Math.round((now.getTime() - session.firstScanCutoff.getTime()) / 60000);
+              toast({
+                  variant: 'destructive',
+                  title: 'Scan failed',
+                  description: 'The time to mark your attendance has expired.',
+              });
+              return false;
           }
       }
       
