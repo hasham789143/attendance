@@ -66,24 +66,23 @@ export function StudentDashboard() {
       setIsLoading(true);
       const deviceId = getDeviceId();
 
-      // Simulate a 2-second delay for user feedback
-      setTimeout(() => {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            markAttendance(userProfile.uid, result, { lat: latitude, lng: longitude }, deviceId);
-            resetScanner();
-          },
-          (error) => {
-            toast({
-              variant: 'destructive',
-              title: 'Location Error',
-              description: `Could not get location: ${error.message}. Please enable location services.`,
-            });
-            resetScanner();
-          }
-        );
-      }, 2000);
+      // We need to get location first, then mark attendance
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          // The markAttendance function will handle all toasts and UI feedback
+          markAttendance(userProfile.uid, result, { lat: latitude, lng: longitude }, deviceId);
+          resetScanner();
+        },
+        (error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Location Error',
+            description: `Could not get location: ${error.message}. Please enable location services.`,
+          });
+          resetScanner();
+        }
+      );
     } else {
         toast({ variant: 'destructive', title: 'Scan Error', description: 'No QR code data was found.' });
         resetScanner();
@@ -178,10 +177,18 @@ export function StudentDashboard() {
           </div>
         );
       case 'left_early':
+         if (firstScanStatus === 'late') {
+          return (
+            <div className="text-center">
+              <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge> (Scan 1)</div>
+              <p className="text-muted-foreground">Recorded at {firstScanTimestamp?.toLocaleTimeString()} ({minutesLate} mins late). Waiting for 2nd scan.</p>
+            </div>
+          );
+        }
         return (
           <div className="text-center">
-            <div className="text-lg">Your status is <Badge className="bg-orange-500">Left Early</Badge></div>
-            <p className="text-muted-foreground">You missed the second verification scan.</p>
+             <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge> (Scan 1)</div>
+            <p className="text-muted-foreground">Waiting for the second verification scan.</p>
           </div>
         );
       case 'absent':
@@ -191,23 +198,14 @@ export function StudentDashboard() {
             <p className="text-muted-foreground">Scan the QR code from the screen to mark your attendance.</p>
           </div>
         );
+      case 'late': // This is a final status, implies both scans done.
+        return (
+          <div className="text-center">
+            <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></div>
+             <p className="text-muted-foreground">Recorded at {firstScanTimestamp?.toLocaleTimeString()} ({minutesLate} minutes late).</p>
+          </div>
+        );
       default:
-         if (firstScanStatus === 'late') {
-          return (
-            <div className="text-center">
-              <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late</Badge></div>
-              <p className="text-muted-foreground">Recorded at {firstScanTimestamp?.toLocaleTimeString()} ({minutesLate} minutes late).</p>
-            </div>
-          );
-        }
-        if (firstScanStatus === 'present') {
-           return (
-            <div className="text-center">
-              <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge> (Scan 1)</div>
-              <p className="text-muted-foreground">Waiting for the second verification scan.</p>
-            </div>
-          );
-        }
         // Fallback for any other state
         return (
           <div className="text-center">
@@ -262,13 +260,6 @@ export function StudentDashboard() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
-            {session.status !== 'inactive' && session.status !== 'ended' && (
-              <Button onClick={handleCheckRange} variant="outline" disabled={isLoading}>
-                <MapPin className="mr-2 h-5 w-5" />
-                Check Range
-              </Button>
-            )}
-
             {shouldShowScannerButton() && (
               <>
                 {showScanner ? (
@@ -278,7 +269,7 @@ export function StudentDashboard() {
                       {isLoading && (
                           <div className="flex flex-col items-center justify-center h-48">
                               <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-                              <p className="text-lg font-semibold">Marking present...</p>
+                              <p className="text-lg font-semibold">Validating...</p>
                           </div>
                       )}
 
