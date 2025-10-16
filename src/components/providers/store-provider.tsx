@@ -1,6 +1,6 @@
 'use client';
 
-import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-display.flow';
+import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-optimization.flow';
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
@@ -109,9 +109,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       const currentSessionTimestamp = parseQrCodeValue(session.qrCodeValue).timestamp;
 
-      setSession(prevSession => {
-        // Only re-initialize attendance if it's a completely new session
-        if (dbSessionTimestamp !== currentSessionTimestamp) {
+      // Only re-initialize attendance if it's a completely new session
+      // Check if attendance is empty or if it's a new session from DB
+      if (attendance.size === 0 || dbSessionTimestamp !== currentSessionTimestamp) {
+        setSession(prevSession => {
             const newAttendance = new Map<string, AttendanceRecord>();
             students.forEach(student => {
                 newAttendance.set(student.uid, { 
@@ -137,19 +138,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 secondScanTime: null, // Reset AI suggestion for new session
                 secondScanReason: null
             };
-        }
-
+        });
+      } else {
         // If it's the same session, just update the session data but preserve attendance state
-        return {
-          ...prevSession,
-          qrCodeValue: dbSession.key,
-          readableCode,
-          startTime,
-          lateCutoff,
-          lat: dbSession.lat,
-          lng: dbSession.lng,
-        };
-      });
+        setSession(prevSession => ({
+            ...prevSession,
+            qrCodeValue: dbSession.key,
+            readableCode,
+            startTime,
+            lateCutoff,
+            lat: dbSession.lat,
+            lng: dbSession.lng,
+        }));
+      }
 
     } else if (!dbSession) { // Explicitly check for no dbSession (session ended)
       if (session.status !== 'inactive' && session.status !== 'ended') {
@@ -164,7 +165,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           });
       }
     }
-  }, [dbSession, students, session.status, session.qrCodeValue]);
+  }, [dbSession, students, session.status, session.qrCodeValue, attendance.size]);
 
   
   const generateNewCode = (prefix: string) => {
@@ -209,12 +210,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => {
     if (!sessionDocRef) return;
     deleteDocumentNonBlocking(sessionDocRef);
-    setSession(prev => ({ 
-        ...prev,
+    // Reset local state completely on session end
+    setAttendance(new Map());
+    setSession({ 
         status: 'ended',
         qrCodeValue: '',
         readableCode: '',
-    }));
+        startTime: null,
+        lateCutoff: null,
+        secondScanTime: null,
+        secondScanReason: null
+    });
     toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
   },[toast, sessionDocRef]);
 
@@ -292,7 +298,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...studentRecord,
           secondScanStatus: 'present',
           secondScanTimestamp: now,
-          finalStatus: studentRecord.firstScanStatus, // Final status is now confirmed as present or late
+           // Final status is confirmed as present or late based on the first scan's status
+          finalStatus: studentRecord.firstScanStatus,
         };
         newAttendance.set(studentId, updatedRecord);
         toastDescription = 'Your presence has been verified!';
@@ -306,17 +313,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   
   const generateSecondQrCode = useCallback(async () => {
     const presentCount = Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length;
-    const absenceRate = students.length > 0 ? ((students.length - presentCount) / students.length) * 100 : 0;
-    const classLengthMinutes = 120; // Assuming a 2-hour class
+    const totalStudents = students.length;
+    const absenceRateAfterBreak = totalStudents > 0 ? ((totalStudents - presentCount) / totalStudents) * 100 : 0;
+    const remainingClassLengthMinutes = 60; // Assuming break is in the middle of a 2hr class
+    const breakLengthMinutes = 10;
 
     try {
-      const result = await getOptimalQrDisplayTime({ absenceRate, classLengthMinutes });
+      const result = await getOptimalQrDisplayTime({ 
+        absenceRateAfterBreak, 
+        remainingClassLengthMinutes,
+        breakLengthMinutes
+      });
       setSession(prev => ({
         ...prev,
-        secondScanTime: result.displayTimeMinutes,
+        secondScanTime: result.displayTimeMinutesFromBreakEnd,
         secondScanReason: result.reasoning
       }));
-       toast({ title: 'AI Recommendation Ready', description: `AI suggests the 2nd scan at ${result.displayTimeMinutes} minutes.` });
+       toast({ title: 'AI Recommendation Ready', description: `AI suggests the 2nd scan at ${result.displayTimeMinutesFromBreakEnd} minutes after the break.` });
     } catch (error) {
       console.error(error);
       toast({ variant: 'destructive', title: 'AI Error', description: 'Could not get recommendation.' });
