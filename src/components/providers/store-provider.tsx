@@ -108,9 +108,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { readableCode } = parseQrCodeValue(dbSession.key);
       
       setSession(prevSession => {
+        const isNewSession = prevSession.qrCodeValue.split(':')[2] !== dbSession.key.split(':')[2];
         const newStatus = prevSession.status === 'active_second' ? 'active_second' : 'active_first';
-        // If the session in DB is new, initialize attendance
-        if(prevSession.qrCodeValue !== dbSession.key) {
+
+        // If the session in DB is new (based on timestamp), initialize attendance
+        if(isNewSession) {
             const newAttendance = new Map<string, AttendanceRecord>();
             students.forEach(student => {
                 newAttendance.set(student.uid, { 
@@ -253,38 +255,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return false;
         }
         
+        let firstScanStatus: 'present' | 'late' = 'present';
+        let minutesLate = 0;
+        
         if (session.lateCutoff && now > session.lateCutoff) {
-            let firstScanStatus: 'present' | 'late' = 'present';
-            let finalStatus: 'present' | 'late' = 'present';
-            let minutesLate = 0;
-            
-            const effectiveLateCutoff = session.lateCutoff || new Date(session.startTime.getTime() + 10 * 60000);
-            if (now > effectiveLateCutoff) {
-              firstScanStatus = 'late';
-              finalStatus = 'late';
-              minutesLate = Math.round((now.getTime() - effectiveLateCutoff.getTime()) / 60000);
-              toastDescription = `You are marked as LATE (${minutesLate} min).`;
-            } else {
-              toastDescription = 'You are marked as PRESENT.';
-            }
-    
-            newAttendance.set(studentId, {
-              ...studentRecord,
-              firstScanStatus,
-              minutesLate,
-              firstScanTimestamp: now,
-              finalStatus: finalStatus, // Tentatively present or late
-            });
+            firstScanStatus = 'late';
+            minutesLate = Math.round((now.getTime() - session.lateCutoff.getTime()) / 60000);
+            toastDescription = `You are marked as LATE (${minutesLate} min).`;
         } else {
-             newAttendance.set(studentId, {
-                ...studentRecord,
-                firstScanStatus: 'present',
-                minutesLate: 0,
-                firstScanTimestamp: now,
-                finalStatus: 'present',
-            });
             toastDescription = 'You are marked as PRESENT.';
         }
+
+        newAttendance.set(studentId, {
+          ...studentRecord,
+          firstScanStatus,
+          minutesLate,
+          firstScanTimestamp: now,
+          // Tentatively set final status, will be updated by second scan
+          finalStatus: firstScanStatus, 
+        });
 
       } else if (session.status === 'active_second') {
         if (studentRecord.firstScanStatus === 'absent') {
@@ -300,8 +289,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...studentRecord,
           secondScanStatus: 'present',
           secondScanTimestamp: now,
-           // Keep 'late' status if they were late, otherwise 'present'
-          finalStatus: studentRecord.firstScanStatus === 'late' ? 'late' : 'present',
+           // Final status is determined by first scan status
+          finalStatus: studentRecord.firstScanStatus,
         });
         toastDescription = 'Your presence has been verified!';
       }
