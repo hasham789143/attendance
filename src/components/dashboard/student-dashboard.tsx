@@ -134,7 +134,7 @@ export function StudentDashboard() {
       );
     }
 
-    const { finalStatus, firstScanStatus, minutesLate } = record;
+    const { finalStatus, firstScanStatus, secondScanStatus, minutesLate } = record;
     
     if (finalStatus === 'present' || finalStatus === 'late') {
         const statusBadge = finalStatus === 'present' 
@@ -177,12 +177,15 @@ export function StudentDashboard() {
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
 
+    // Show for first scan if not yet scanned
     if (session.status === 'active_first' && myRecord.firstScanStatus === 'absent') {
       return true;
     }
+    // Show for second scan if first is done but second is not
     if (session.status === 'active_second' && myRecord.firstScanStatus !== 'absent' && myRecord.secondScanStatus === 'absent') {
       return true;
     }
+    
     return false;
   }
 
