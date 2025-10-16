@@ -233,7 +233,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      if (code.toUpperCase() !== session.readableCode) {
+      const { readableCode: expectedCode } = parseQrCodeValue(session.qrCodeValue);
+      const { readableCode: receivedCode } = parseQrCodeValue(code);
+
+      if (receivedCode.toUpperCase() !== expectedCode.toUpperCase()) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
         return;
       }

@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle, MapPin } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
-import { getDeviceId } from '@/lib/utils';
+import { getDeviceId, getDistance } from '@/lib/utils';
 
 export function StudentDashboard() {
   const { userProfile } = useAuth();
@@ -61,7 +61,7 @@ export function StudentDashboard() {
     setIsLoading(false);
   }
 
-  const processScan = (result: string) => {
+  const processScan = (result: string | null) => {
     if (result && userProfile) {
       setIsLoading(true);
       const deviceId = getDeviceId();
@@ -71,21 +71,52 @@ export function StudentDashboard() {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const { latitude, longitude } = position.coords;
-            const code = result.split(':')[1] || result;
-            markAttendance(userProfile.uid, code, { lat: latitude, lng: longitude }, deviceId);
+            markAttendance(userProfile.uid, result, { lat: latitude, lng: longitude }, deviceId);
             resetScanner();
           },
           (error) => {
             toast({
               variant: 'destructive',
               title: 'Location Error',
-              description: 'Could not get your location. Please enable location services.',
+              description: `Could not get location: ${error.message}. Please enable location services.`,
             });
             resetScanner();
           }
         );
       }, 2000);
+    } else {
+        toast({ variant: 'destructive', title: 'Scan Error', description: 'No QR code data was found.' });
+        resetScanner();
     }
+  };
+  
+  const handleCheckRange = () => {
+    if (!session.lat || !session.lng) {
+      toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
+      return;
+    }
+    
+    setIsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const distance = getDistance({lat: session.lat!, lng: session.lng!}, {lat: latitude, lng: longitude});
+        if (distance <= 100) { // 100 meters
+             toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
+        } else {
+             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
+        }
+        setIsLoading(false);
+      },
+      (error) => {
+        toast({
+          variant: 'destructive',
+          title: 'Location Error',
+          description: `Could not get location: ${error.message}. Please enable location services.`,
+        });
+        setIsLoading(false);
+      }
+    );
   };
   
   const handleScanResult = (result: any) => {
@@ -230,61 +261,70 @@ export function StudentDashboard() {
             {getStatusContent(myRecord)}
           </div>
 
-          {shouldShowScannerButton() && (
-            <div className="flex flex-col items-center gap-4">
-              {showScanner ? (
-                <div className="w-full max-w-sm mx-auto text-center">
-                    <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
+          <div className="flex flex-col items-center gap-4">
+            {session.status !== 'inactive' && session.status !== 'ended' && (
+              <Button onClick={handleCheckRange} variant="outline" disabled={isLoading}>
+                <MapPin className="mr-2 h-5 w-5" />
+                Check Range
+              </Button>
+            )}
 
-                    {isLoading && (
-                        <div className="flex flex-col items-center justify-center h-48">
-                            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-                            <p className="text-lg font-semibold">Marking present...</p>
-                        </div>
-                    )}
+            {shouldShowScannerButton() && (
+              <>
+                {showScanner ? (
+                  <div className="w-full max-w-sm mx-auto text-center">
+                      <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
 
-                    {!isLoading && scannedData && (
-                         <div className="flex flex-col items-center justify-center h-48">
-                            <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-                            <p className="text-lg font-semibold">QR Code Scanned!</p>
-                            <p className="text-muted-foreground">Click Done to confirm.</p>
-                        </div>
-                    )}
-                    
-                    {!isLoading && !scannedData && hasCameraPermission && (
-                      <Scanner
-                          onScan={handleScanResult}
-                          onError={handleError}
-                          components={{
-                            audio: true,
-                            finder: true,
-                          }}
-                          options={{
-                            delayBetweenScanAttempts: 500,
-                            delayBetweenScanSuccess: 1000,
-                          }}
-                      />
-                    )}
-
-                    <div className="flex w-full gap-2 mt-4">
-                      <Button onClick={resetScanner} className="w-full" variant="outline" disabled={isLoading}>
-                          Cancel
-                      </Button>
-                       {scannedData && !isLoading && (
-                          <Button onClick={() => processScan(scannedData)} className="w-full">
-                              Done
-                          </Button>
+                      {isLoading && (
+                          <div className="flex flex-col items-center justify-center h-48">
+                              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+                              <p className="text-lg font-semibold">Marking present...</p>
+                          </div>
                       )}
-                    </div>
-                </div>
-              ) : (
-                <Button onClick={() => setShowScanner(true)} size="lg" disabled={isLoading}>
-                    <QrCode className="mr-2 h-5 w-5" />
-                    Scan QR Code
-                </Button>
-              )}
-            </div>
-          )}
+
+                      {!isLoading && scannedData && (
+                           <div className="flex flex-col items-center justify-center h-48">
+                              <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                              <p className="text-lg font-semibold">QR Code Scanned!</p>
+                              <p className="text-muted-foreground">Click Done to confirm.</p>
+                          </div>
+                      )}
+                      
+                      {!isLoading && !scannedData && hasCameraPermission && (
+                        <Scanner
+                            onScan={handleScanResult}
+                            onError={handleError}
+                            components={{
+                              audio: true,
+                              finder: true,
+                            }}
+                            options={{
+                              delayBetweenScanAttempts: 500,
+                              delayBetweenScanSuccess: 1000,
+                            }}
+                        />
+                      )}
+
+                      <div className="flex w-full gap-2 mt-4">
+                        <Button onClick={resetScanner} className="w-full" variant="outline" disabled={isLoading}>
+                            Cancel
+                        </Button>
+                         {scannedData && !isLoading && (
+                            <Button onClick={() => processScan(scannedData)} className="w-full">
+                                Done
+                            </Button>
+                        )}
+                      </div>
+                  </div>
+                ) : (
+                  <Button onClick={() => setShowScanner(true)} size="lg" disabled={isLoading}>
+                      <QrCode className="mr-2 h-5 w-5" />
+                      Scan QR Code
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
