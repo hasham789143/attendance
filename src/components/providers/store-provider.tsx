@@ -230,7 +230,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       
       const studentRecord = attendance.get(studentId);
-      if(studentRecord && studentRecord.status !== 'absent') {
+      // Prevent marking again if status is already 'present' or 'late' for the current session state.
+      if(studentRecord && (studentRecord.status === 'present' || studentRecord.status === 'late')) {
           toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
           return false;
       }
