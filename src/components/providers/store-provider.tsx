@@ -42,7 +42,7 @@ type StoreContextType = {
   students: UserProfile[];
   startSession: (lateAfterMinutes: number) => void;
   endSession: () => void;
-  markAttendance: (studentId: string, code: string, location: StudentLocation) => boolean;
+  markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }) => boolean;
   generateSecondQrCode: () => Promise<void>;
   activateSecondQr: () => void;
 };
@@ -111,8 +111,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const isNewSession = prevSession.qrCodeValue.split(':')[2] !== dbSession.key.split(':')[2];
         const newStatus = prevSession.status === 'active_second' ? 'active_second' : 'active_first';
 
-        // If the session in DB is new (based on timestamp), initialize attendance
-        if(isNewSession) {
+        // If the session in DB is new (based on timestamp) or attendance is empty, initialize attendance
+        if(isNewSession || attendance.size === 0) {
             const newAttendance = new Map<string, AttendanceRecord>();
             students.forEach(student => {
                 newAttendance.set(student.uid, { 
@@ -152,7 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
       setAttendance(new Map());
     }
-  }, [dbSession, students]);
+  }, [dbSession, students, attendance.size]);
 
   
   const generateNewCode = (prefix: string) => {
@@ -216,7 +216,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
   },[toast, sessionDocRef]);
 
-  const markAttendance = useCallback((studentId: string, code: string, location: StudentLocation): boolean => {
+  const markAttendance = useCallback((studentId: string, code: string, location: { lat: number; lng: number }): boolean => {
       if (!session.startTime || session.status === 'inactive' || session.status === 'ended') {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
         return false;
@@ -233,6 +233,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
             return false;
         }
+         toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
       } else {
         toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
         return false;
