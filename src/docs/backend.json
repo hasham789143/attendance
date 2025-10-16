@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the attendance tracking system.",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique identifier for the user (matches Firebase Auth UID)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user."
+        },
+        "roll": {
+          "type": "string",
+          "description": "Roll number of the user (e.g., student ID)."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "Role of the user within the system (e.g., 'admin', 'viewer', 'disabled').",
+          "enum": ["admin", "viewer", "disabled"]
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "email",
+        "role"
+      ]
+    },
+    "AttendanceSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AttendanceSession",
+      "type": "object",
+      "description": "Represents a specific attendance session, typically associated with a class or event.",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "The unique key or code associated with this attendance session, often used in QR codes."
+        },
+        "adminUid": {
+          "type": "string",
+          "description": "Reference to User. Unique identifier of the admin who created the session."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The time the session was created.",
+          "format": "date-time"
+        },
+        "lat": {
+          "type": "number",
+          "description": "Latitude of the location where the attendance session is valid."
+        },
+        "lng": {
+          "type": "number",
+          "description": "Longitude of the location where the attendance session is valid."
+        },
+        "lateAfterMinutes": {
+            "type": "number",
+            "description": "The number of minutes after which a student is marked as late."
+        }
+      },
+      "required": [
+        "key",
+        "adminUid",
+        "createdAt",
+        "lat",
+        "lng"
+      ]
+    },
+    "AttendanceRecord": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AttendanceRecord",
+      "type": "object",
+      "description": "Represents a single attendance record for a user in a specific session.",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Reference to User. Unique identifier of the user for whom the attendance is recorded."
+        },
+        "name": { "type": "string" },
+        "roll": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "status": {
+          "type": "string",
+          "description": "Attendance status (e.g., 'present')."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp when the attendance was recorded.",
+          "format": "date-time"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "URL of the photo taken during attendance, if required."
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Unique identifier of the device used to mark attendance."
+        },
+        "distance": {
+          "type": "number",
+          "description": "Distance between the user and the session location when attendance was marked."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "email",
+        "status",
+        "timestamp",
+        "deviceId"
+      ]
+    },
+    "Settings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Settings",
+      "type": "object",
+      "description": "Application-wide settings.",
+      "properties": {
+        "isSelfieRequired": { "type": "boolean" },
+        "isRegistrationOpen": { "type": "boolean" }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+        "schema": { "$ref": "#/entities/User" },
+        "description": "Stores user profile information. The 'userId' is the Firebase Authentication UID."
+    },
+    "/sessions/current": {
+      "schema": { "$ref": "#/entities/AttendanceSession" },
+      "description": "Stores the current active attendance session."
+    },
+    "/sessions/{sessionId}/records/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Stores individual attendance records for a specific session."
+    },
+    "/settings/attendance": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Stores application-wide settings. There is only one document with id 'attendance' in this collection."
+    }
+  }
+}
