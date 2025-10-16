@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle, MapPin } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
@@ -134,35 +134,33 @@ export function StudentDashboard() {
       );
     }
 
-    const { finalStatus, firstScanStatus, secondScanStatus, minutesLate } = record;
+    const { finalStatus, firstScanStatus, minutesLate } = record;
     
-    // Logic based on finalStatus first
-    if (finalStatus === 'present') {
+    if (finalStatus === 'present' || finalStatus === 'late') {
+        const statusBadge = finalStatus === 'present' 
+            ? <Badge className="bg-green-600">Present</Badge>
+            : <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge>;
       return (
         <div className="text-center">
-          <div className="text-lg">You are marked <Badge className="bg-green-600">Present</Badge></div>
+          <div className="text-lg">You are marked {statusBadge}</div>
           <p className="text-muted-foreground">Both scans completed. Well done!</p>
         </div>
       );
-    }
-
-    if (finalStatus === 'late') {
-       return (
-          <div className="text-center">
-            <div className="text-lg">You are marked <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge></div>
-             <p className="text-muted-foreground">Both scans completed. Well done!</p>
-          </div>
-        );
     }
     
     if (finalStatus === 'left_early') {
       const scan1Badge = firstScanStatus === 'late' 
           ? <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge>
           : <Badge className="bg-green-500">Completed</Badge>;
+      
+      const waitingMessage = session.status === 'active_first' 
+        ? "Waiting for the second verification scan to be activated."
+        : "The second scan is now active. Please scan again.";
+
       return (
         <div className="text-center">
           <div className="text-lg">Scan 1: {scan1Badge}</div>
-          <p className="text-muted-foreground">Waiting for the second verification scan.</p>
+          <p className="text-muted-foreground">{waitingMessage}</p>
         </div>
       );
     }
@@ -187,47 +185,6 @@ export function StudentDashboard() {
     }
     return false;
   }
-
-   const checkRange = () => {
-    if (!session.lat || !session.lng) {
-      toast({
-        variant: 'destructive',
-        title: 'Session Error',
-        description: 'The session location has not been set by the admin.',
-      });
-      return;
-    }
-    
-    setIsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const distance = getDistance({ lat: session.lat!, lng: session.lng! }, { lat: latitude, lng: longitude });
-        
-        if (distance <= 100) {
-          toast({
-            title: 'Location Verified',
-            description: `You are within range (${Math.round(distance)}m).`,
-          });
-        } else {
-          toast({
-            variant: 'destructive',
-            title: 'Out of Range',
-            description: `You are too far from the session location (${Math.round(distance)}m).`,
-          });
-        }
-        setIsLoading(false);
-      },
-      (error) => {
-        toast({
-          variant: 'destructive',
-          title: 'Location Error',
-          description: `Could not get location: ${error.message}. Please enable location services.`,
-        });
-        setIsLoading(false);
-      }
-    );
-  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -260,13 +217,6 @@ export function StudentDashboard() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
-              {session.status !== 'inactive' && session.status !== 'ended' && !shouldShowScannerButton() && (
-                 <Button onClick={checkRange} variant="outline" disabled={isLoading}>
-                    <MapPin className="mr-2 h-5 w-5" />
-                    Check Range
-                </Button>
-              )}
-
             {shouldShowScannerButton() && (
               <>
                 {showScanner ? (
