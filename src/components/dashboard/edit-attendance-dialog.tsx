@@ -1,5 +1,3 @@
-// THIS IS A NEW FILE
-
 'use client';
 
 import { useState } from 'react';
@@ -22,7 +20,11 @@ import {
 } from "@/components/ui/select"
 import type { AttendanceRecord } from '../providers/store-provider';
 
-type StoredAttendanceRecord = Omit<AttendanceRecord, 'student'> & { student: { uid: string, name: string, roll?: string, email: string } };
+type StoredAttendanceRecord = Omit<AttendanceRecord, 'student' | 'firstScanTimestamp' | 'secondScanTimestamp'> & { 
+  student: { uid: string, name: string, roll?: string, email: string },
+  firstScanTimestamp: string | null;
+  secondScanTimestamp: string | null;
+};
 
 
 interface EditAttendanceDialogProps {
