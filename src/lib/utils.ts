@@ -24,3 +24,5 @@ export function getDistance(
   const d = R * c; // in metres
   return d;
 }
+
+    

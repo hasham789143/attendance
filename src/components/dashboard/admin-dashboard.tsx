@@ -13,6 +13,7 @@ import { StartSessionDialog } from './start-session-dialog';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 
 function AiVerifier() {
@@ -47,9 +48,16 @@ function AiVerifier() {
     )
 }
 
-function AttendanceList() {
+function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
   const { attendance } = useStore();
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
+
+  const filteredAttendance = useMemo(() => {
+    if (filter === 'all') {
+      return sortedAttendance;
+    }
+    return sortedAttendance.filter(record => record.finalStatus === filter);
+  }, [filter, sortedAttendance]);
 
   const getStatusBadge = (record: AttendanceRecord) => {
     const { finalStatus, firstScanStatus, minutesLate } = record;
@@ -86,7 +94,7 @@ function AttendanceList() {
     const tableColumn = ["Roll Number", "Name", "Status", "Last Scan"];
     const tableRows: any[] = [];
 
-    sortedAttendance.forEach(record => {
+    filteredAttendance.forEach(record => {
       const recordData = [
         record.student.roll || 'N/A',
         record.student.name,
@@ -102,16 +110,19 @@ function AttendanceList() {
         startY: 20,
         didDrawPage: function (data) {
             doc.setFontSize(20);
-            doc.text("Attendance Report", data.settings.margin.left, 15);
+            doc.text(`Attendance Report (${filter.toUpperCase()}) - ${format(new Date(), 'yyyy-MM-dd')}`, data.settings.margin.left, 15);
         }
     });
-    doc.save(`attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`attendance-report-${filter}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   return (
     <Card className="col-span-1 lg:col-span-2">
       <CardHeader className='flex-row items-center justify-between'>
-        <CardTitle>Live Attendance Roster</CardTitle>
+        <div>
+            <CardTitle>Live Attendance Roster</CardTitle>
+            <CardDescription>{filteredAttendance.length} student(s) showing</CardDescription>
+        </div>
          <Button onClick={downloadPdf} variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
             Download PDF
@@ -128,7 +139,7 @@ function AttendanceList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedAttendance.map((record) => (
+            {filteredAttendance.map((record) => (
               <TableRow key={record.student.uid}>
                 <TableCell className="font-medium">{record.student.roll || 'N/A'}</TableCell>
                 <TableCell>{record.student.name}</TableCell>
@@ -147,7 +158,8 @@ function AttendanceList() {
 
 
 export function AdminDashboard() {
-  const { session, startSession, endSession, attendance, students } = useStore();
+  const { session, attendance, students } = useStore();
+  const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
   
   const { present, absent, leftEarly } = useMemo(() => {
     const counts = { present: 0, absent: 0, leftEarly: 0 };
@@ -161,6 +173,9 @@ export function AdminDashboard() {
   
   const totalStudents = students?.length || 0;
   const attendancePercentage = totalStudents > 0 ? (present / totalStudents) * 100 : 0;
+
+  const cardBaseClasses = "cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md";
+  const activeCardClasses = "ring-2 ring-primary shadow-lg";
 
   return (
     <div className="flex flex-col gap-6">
@@ -190,7 +205,7 @@ export function AdminDashboard() {
         </div>
         
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
+            <Card onClick={() => setFilter('all')} className={cn(cardBaseClasses, filter === 'all' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Total Students</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
@@ -199,7 +214,7 @@ export function AdminDashboard() {
                     <div className="text-2xl font-bold">{totalStudents}</div>
                 </CardContent>
             </Card>
-            <Card>
+            <Card onClick={() => setFilter('present')} className={cn(cardBaseClasses, filter === 'present' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Present</CardTitle>
                     <UserCheck className="h-4 w-4 text-green-600" />
@@ -208,7 +223,7 @@ export function AdminDashboard() {
                     <div className="text-2xl font-bold">{present}</div>
                 </CardContent>
             </Card>
-             <Card>
+             <Card onClick={() => setFilter('left_early')} className={cn(cardBaseClasses, filter === 'left_early' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Left Early</CardTitle>
                     <LogOut className="h-4 w-4 text-orange-500" />
@@ -217,7 +232,7 @@ export function AdminDashboard() {
                     <div className="text-2xl font-bold">{leftEarly}</div>
                 </CardContent>
             </Card>
-            <Card>
+            <Card onClick={() => setFilter('absent')} className={cn(cardBaseClasses, filter === 'absent' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Absent</CardTitle>
                     <UserX className="h-4 w-4 text-destructive" />
@@ -248,9 +263,11 @@ export function AdminDashboard() {
                   <QrCodeDisplay />
                   <AiVerifier />
                 </div>
-                <AttendanceList />
+                <AttendanceList filter={filter} />
             </div>
         )}
     </div>
   );
 }
+
+    
