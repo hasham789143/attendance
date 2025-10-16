@@ -168,7 +168,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           });
       }
     }
-  }, [dbSession, students, session.qrCodeValue, session.status, attendance.size]);
+  }, [dbSession, students]);
 
   
   const generateNewCode = (prefix: string) => {
@@ -216,10 +216,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
         const batch = writeBatch(firestore);
 
-        // Instead of iterating over the `attendance` map, which might be incomplete,
-        // iterate over the definitive list of all `students`.
+        // Iterate over the definitive list of all `students`.
         students.forEach((student) => {
-            // Get the record from the live attendance map, or create a default 'absent' one.
             const liveRecord = attendance.get(student.uid);
 
             const recordToSave = liveRecord || {
@@ -231,7 +229,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 secondScanTimestamp: null,
                 minutesLate: 0,
             };
-
+            
             // Convert Dates to strings for Firestore serialization.
             const serializableRecord = {
                 ...recordToSave,
@@ -288,18 +286,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return newAttendance;
       }
 
-      if (session.lat && session.lng) {
-        const distance = getDistance({ lat: session.lat, lng: session.lng }, location);
-        if (distance > 100) {
-          toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
-          return newAttendance;
-        }
-        toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
-      } else {
-        toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
-        return newAttendance;
-      }
-
       const now = new Date();
 
       if (session.status === 'active_first' && codePrefix === 'first') {
@@ -310,6 +296,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (devicesInUse.has(deviceId)) {
           toast({ variant: 'destructive', title: 'Device Already Used', description: 'This device has already marked attendance for another student.' });
           return newAttendance;
+        }
+        
+        if (session.lat && session.lng) {
+            const distance = getDistance({ lat: session.lat, lng: session.lng }, location);
+            if (distance > 100) {
+              toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
+              return newAttendance;
+            }
+            toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
+        } else {
+            toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
+            return newAttendance;
         }
 
         let firstScanStatus: 'present' | 'late' = 'present';
@@ -341,6 +339,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           toast({ title: 'Already Scanned', description: 'You have already completed the second scan.' });
           return newAttendance;
         }
+        
+        if (session.lat && session.lng) {
+            const distance = getDistance({ lat: session.lat, lng: session.lng }, location);
+            if (distance > 100) {
+              toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
+              return newAttendance;
+            }
+            toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
+        } else {
+            toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
+            return newAttendance;
+        }
 
         const updatedRecord: AttendanceRecord = {
           ...studentRecord,
@@ -360,12 +370,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [session, devicesInUse, toast]);
   
   const generateSecondQrCode = useCallback(async () => {
-    // Correctly calculate absence rate based on those who DID NOT complete the first scan.
-    const firstScanPresentCount = Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length;
+    const presentCount = Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length;
     const totalStudents = students.length;
-    
-    // Absence rate is the inverse of presence rate. Let's calculate absence rate based on who is present for first scan.
-    const absenceRateAfterBreak = totalStudents > 0 ? ((totalStudents - firstScanPresentCount) / totalStudents) * 100 : 0;
+    if (totalStudents === 0) {
+        toast({variant: 'destructive', title: 'No students found', description: 'Cannot generate second QR code without students.'});
+        return;
+    }
+    const absenceRateAfterBreak = totalStudents > 0 ? ((totalStudents - presentCount) / totalStudents) * 100 : 0;
     
     const remainingClassLengthMinutes = 60; 
     const breakLengthMinutes = 10;
