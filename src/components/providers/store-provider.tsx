@@ -42,7 +42,7 @@ type StoreContextType = {
   students: UserProfile[];
   startSession: (lateAfterMinutes: number) => void;
   endSession: () => void;
-  markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }) => boolean;
+  markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }) => void;
   generateSecondQrCode: () => Promise<void>;
   activateSecondQr: () => void;
 };
@@ -105,10 +105,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (dbSession && students.length > 0) {
       const startTime = dbSession.createdAt ? new Date(dbSession.createdAt) : new Date();
       const lateCutoff = dbSession.lateAfterMinutes ? new Date(startTime.getTime() + dbSession.lateAfterMinutes * 60 * 1000) : null;
-      const { readableCode, timestamp } = parseQrCodeValue(dbSession.key);
+      const { readableCode, timestamp: dbSessionTimestamp } = parseQrCodeValue(dbSession.key);
       
-      const currentSessionTimestamp = session.qrCodeValue.split(':')[2];
-      const dbSessionTimestamp = dbSession.key.split(':')[2];
+      const currentSessionTimestamp = parseQrCodeValue(session.qrCodeValue).timestamp;
 
       setSession(prevSession => {
         // Only re-initialize attendance if it's a completely new session
@@ -153,19 +152,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
 
     } else if (!dbSession) { // Explicitly check for no dbSession (session ended)
-      setSession({
-        status: 'ended', // Use 'ended' to signify it was active but now is not
-        qrCodeValue: '',
-        readableCode: '',
-        startTime: null,
-        lateCutoff: null,
-        secondScanTime: null,
-        secondScanReason: null,
-      });
-      // Optionally clear attendance, or keep it to show the final state of the last session
-      // setAttendance(new Map());
+      if (session.status !== 'inactive' && session.status !== 'ended') {
+          setSession({
+            status: 'ended', // Use 'ended' to signify it was active but now is not
+            qrCodeValue: '',
+            readableCode: '',
+            startTime: null,
+            lateCutoff: null,
+            secondScanTime: null,
+            secondScanReason: null,
+          });
+      }
     }
-  }, [dbSession, students]); // Rerun when dbSession changes or when the student list is finally loaded
+  }, [dbSession, students, session.status, session.qrCodeValue]);
 
   
   const generateNewCode = (prefix: string) => {
@@ -176,7 +175,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const parseQrCodeValue = (qrValue: string) => {
     const parts = qrValue.split(':');
-    return { prefix: parts[0], readableCode: parts[1], timestamp: parts[2] };
+    return { prefix: parts[0] || '', readableCode: parts[1] || '', timestamp: parts[2] || '' };
   };
 
   const startSession = useCallback((lateAfterMinutes: number) => {
@@ -210,7 +209,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const endSession = useCallback(() => {
     if (!sessionDocRef) return;
     deleteDocumentNonBlocking(sessionDocRef);
-    setSession(prev => ({ // Reset local state immediately
+    setSession(prev => ({ 
         ...prev,
         status: 'ended',
         qrCodeValue: '',
@@ -219,33 +218,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast({ title: 'Session Ended', description: 'Attendance is now closed.' });
   },[toast, sessionDocRef]);
 
-  const markAttendance = useCallback((studentId: string, code: string, location: { lat: number; lng: number }): boolean => {
+  const markAttendance = useCallback((studentId: string, code: string, location: { lat: number; lng: number }) => {
       if (!session.startTime || session.status === 'inactive' || session.status === 'ended') {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
-        return false;
+        return;
       }
       
       if (code.toUpperCase() !== session.readableCode) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
-        return false;
+        return;
       }
 
       if (session.lat && session.lng) {
         const distance = getDistance({lat: session.lat, lng: session.lng}, location);
         if (distance > 100) { // 100 meters
             toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
-            return false;
+            return;
         }
         toast({ title: 'Location Verified', description: `You are within range (${Math.round(distance)}m).` });
       } else {
         toast({ variant: 'destructive', title: 'Session Error', description: 'Session location is not set.' });
-        return false;
+        return;
       }
       
       const studentRecord = attendance.get(studentId);
       if (!studentRecord) {
         toast({ variant: 'destructive', title: 'Error', description: 'Could not find your student profile.' });
-        return false;
+        return;
       }
 
       const now = new Date();
@@ -256,7 +255,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if(session.status === 'active_first') {
         if(studentRecord.firstScanStatus !== 'absent') {
           toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
-          return false;
+          return;
         }
         
         let firstScanStatus: 'present' | 'late' = 'present';
@@ -275,27 +274,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           firstScanStatus,
           minutesLate,
           firstScanTimestamp: now,
-          // Tentatively set final status, will be updated by second scan logic
-          finalStatus: firstScanStatus, 
+          finalStatus: firstScanStatus, // Tentatively present/late
         };
         newAttendance.set(studentId, updatedRecord);
 
       } else if (session.status === 'active_second') {
         if (studentRecord.firstScanStatus === 'absent') {
           toast({ variant: 'destructive', title: 'First Scan Missed', description: 'You cannot mark the second scan without the first.' });
-          return false;
+          return;
         }
         if (studentRecord.secondScanStatus === 'present') {
            toast({ variant: 'default', title: 'Already Marked', description: 'You have already marked your attendance for this scan.' });
-           return false;
+           return;
         }
         
         const updatedRecord: AttendanceRecord = {
           ...studentRecord,
           secondScanStatus: 'present',
           secondScanTimestamp: now,
-           // Final status is determined by first scan status, now confirmed with second scan
-          finalStatus: studentRecord.firstScanStatus,
+          finalStatus: studentRecord.firstScanStatus, // Final status is now confirmed as present or late
         };
         newAttendance.set(studentId, updatedRecord);
         toastDescription = 'Your presence has been verified!';
@@ -303,7 +300,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setAttendance(newAttendance);
       toast({ title: toastMessage, description: toastDescription });
-      return true;
     },
     [session, attendance, toast]
   );
@@ -334,13 +330,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const newAttendance = new Map(attendance);
     newAttendance.forEach((record, studentId) => {
       // If they were present for the first scan, mark them as having left early.
-      // Their final status will become 'present' again if they complete the second scan.
+      // Their final status will become 'present' or 'late' again if they complete the second scan.
       if (record.firstScanStatus !== 'absent') {
-        newAttendance.set(studentId, { 
+        const updatedRecord: AttendanceRecord = { 
           ...record,
           secondScanStatus: 'absent',
           finalStatus: 'left_early',
-        });
+        };
+        newAttendance.set(studentId, updatedRecord);
       }
     });
 

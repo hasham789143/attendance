@@ -141,11 +141,11 @@
     },
     "/sessions/current": {
       "schema": { "$ref": "#/entities/AttendanceSession" },
-      "description": "Stores the current active attendance session."
+      "description": "Stores the current active attendance session. This is a single document."
     },
     "/sessions/{sessionId}/records/{recordId}": {
       "schema": { "$ref": "#/entities/AttendanceRecord" },
-      "description": "Stores individual attendance records for a specific session."
+      "description": "Stores individual attendance records for a specific historical session."
     },
     "/settings/attendance": {
       "schema": { "$ref": "#/entities/Settings" },
