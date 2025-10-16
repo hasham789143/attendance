@@ -4,7 +4,7 @@ import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-optimization.flow
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, query, where, doc, writeBatch, updateDoc } from 'firebase/firestore';
+import { collection, query, where, doc, writeBatch, updateDoc, getDocs, DocumentReference, getDoc } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
 import { AttendanceSession } from '@/models/backend';
@@ -43,7 +43,7 @@ type StoreContextType = {
   startSession: (lateAfterMinutes: number) => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
-  generateSecondQrCode: () => Promise<void>;
+  generateSecondQrCode: (remainingClassLengthMinutes: number, breakLengthMinutes: number) => Promise<void>;
   activateSecondQr: () => void;
 };
 
@@ -93,7 +93,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return collection(firestore, 'sessions', 'current', 'records');
   }, [firestore, dbSession]);
 
-  const { data: liveRecords } = useCollection<AttendanceRecord>(liveRecordsQuery);
+  const { data: liveRecords } = useCollection<any>(liveRecordsQuery);
   
   const [session, setSession] = useState<Session>({
     status: 'inactive',
@@ -144,31 +144,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         setAttendance(new Map());
     }
-  }, [dbSession]);
+  }, [dbSession, session.status]);
 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
-    if (liveRecords) {
+    if (liveRecords && students.length > 0) {
         const newAttendance = new Map<string, AttendanceRecord>();
         const newDevices = new Set<string>();
-        liveRecords.forEach(record => {
-            // Firestore timestamps are converted to JS Date objects
-            const hydratedRecord = {
-                ...record,
-                firstScanTimestamp: record.firstScanTimestamp ? new Date(record.firstScanTimestamp) : null,
-                secondScanTimestamp: record.secondScanTimestamp ? new Date(record.secondScanTimestamp) : null,
-            };
-            newAttendance.set(record.student.uid, hydratedRecord);
 
-            // Re-populate devices in use to prevent duplicates on reload
-            if(record.firstScanStatus !== 'absent' && (record as any).deviceId) {
-              newDevices.add((record as any).deviceId);
+        // Ensure every student has a record, even if it's just the default
+        students.forEach(student => {
+            const liveRecordData = liveRecords.find(r => r.id === student.uid);
+            if (liveRecordData) {
+                 const hydratedRecord: AttendanceRecord = {
+                    student: liveRecordData.student,
+                    firstScanStatus: liveRecordData.firstScanStatus,
+                    secondScanStatus: liveRecordData.secondScanStatus,
+                    finalStatus: liveRecordData.finalStatus,
+                    firstScanTimestamp: liveRecordData.firstScanTimestamp ? new Date(liveRecordData.firstScanTimestamp.seconds * 1000) : null,
+                    secondScanTimestamp: liveRecordData.secondScanTimestamp ? new Date(liveRecordData.secondScanTimestamp.seconds * 1000) : null,
+                    minutesLate: liveRecordData.minutesLate,
+                };
+                newAttendance.set(student.uid, hydratedRecord);
+
+                if(liveRecordData.firstScanStatus !== 'absent' && liveRecordData.deviceId) {
+                    newDevices.add(liveRecordData.deviceId);
+                }
+            } else {
+                 const defaultRecord: AttendanceRecord = {
+                    student,
+                    firstScanStatus: 'absent',
+                    secondScanStatus: 'n/a',
+                    finalStatus: 'absent',
+                    firstScanTimestamp: null,
+                    secondScanTimestamp: null,
+                    minutesLate: 0,
+                };
+                newAttendance.set(student.uid, defaultRecord);
             }
         });
         setAttendance(newAttendance);
         setDevicesInUse(newDevices);
     }
-  }, [liveRecords]);
+  }, [liveRecords, students]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -212,7 +230,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       students.forEach(student => {
           const recordRef = doc(firestore, 'sessions', 'current', 'records', student.uid);
           const initialRecord = {
-              student: student, 
+              student: {
+                uid: student.uid,
+                name: student.name,
+                email: student.email,
+                role: student.role,
+                roll: student.roll,
+              }, 
               firstScanStatus: 'absent',
               secondScanStatus: 'n/a',
               finalStatus: 'absent',
@@ -239,33 +263,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const batch = writeBatch(firestore);
         const archiveSessionRef = doc(collection(firestore, "sessions"));
         batch.set(archiveSessionRef, dbSession);
+        
+        const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
 
-        // Iterate over the FULL student list to ensure every student has a record
-        students.forEach((student) => {
-            const liveRecord = attendance.get(student.uid);
-            
-            // Create a final record for archiving
-            const finalRecordForArchive = {
-                student: student,
-                firstScanStatus: liveRecord?.firstScanStatus || 'absent',
-                secondScanStatus: liveRecord?.secondScanStatus || (liveRecord?.firstScanStatus !== 'absent' ? 'absent' : 'n/a'),
-                finalStatus: liveRecord?.finalStatus || 'absent',
-                firstScanTimestamp: liveRecord?.firstScanTimestamp?.toISOString() || null,
-                secondScanTimestamp: liveRecord?.secondScanTimestamp?.toISOString() || null,
-                minutesLate: liveRecord?.minutesLate || 0,
-            };
-
-            const recordRef = doc(collection(firestore, 'sessions', archiveSessionRef.id, 'records'));
-            batch.set(recordRef, finalRecordForArchive);
+        recordsSnapshot.forEach(recordDoc => {
+            const recordData = recordDoc.data();
+            const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
+            batch.set(archiveRecordRef, recordData);
         });
         
-        // Delete all records in the subcollection first
-        const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
         recordsSnapshot.forEach(recordDoc => {
             batch.delete(doc(firestore, 'sessions', 'current', 'records', recordDoc.id));
         });
 
-        // After deleting subcollection, delete the main session doc
         batch.delete(sessionDocRef);
 
         await batch.commit();
@@ -276,16 +286,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         console.error("Failed to archive session:", error);
         toast({ variant: 'destructive', title: 'Error Ending Session', description: error.message || 'Could not archive records.' });
     }
-}, [sessionDocRef, dbSession, firestore, students, attendance, toast]);
+}, [sessionDocRef, dbSession, firestore, toast]);
 
 
 const markAttendance = useCallback(async (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => {
-    const studentRecord = attendance.get(studentId);
-    
-    if (!firestore || !session.startTime || !studentRecord || (session.status !== 'active_first' && session.status !== 'active_second')) {
+    if (!firestore || !session.startTime || (session.status !== 'active_first' && session.status !== 'active_second')) {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
         return;
     }
+    
+    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+    const studentRecordSnap = await getDoc(studentDocRef);
+    if (!studentRecordSnap.exists()) {
+        toast({ variant: 'destructive', title: 'Record not found', description: 'Your attendance record could not be found.' });
+        return;
+    }
+    const studentRecord = studentRecordSnap.data();
 
     const { readableCode: expectedCode, prefix: codePrefix } = parseQrCodeValue(session.qrCodeValue);
     const { readableCode: receivedCode } = parseQrCodeValue(code);
@@ -294,8 +310,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
         return;
     }
-    
-    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
 
     // ---- FIRST SCAN LOGIC ----
     if (session.status === 'active_first' && codePrefix === 'first') {
@@ -326,12 +340,12 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         const updates = {
             firstScanStatus,
             minutesLate,
-            firstScanTimestamp: now.toISOString(),
+            firstScanTimestamp: now,
             finalStatus: 'left_early', // Default to left_early until second scan
-            deviceId: deviceId, // Store device ID
+            deviceId: deviceId,
         };
 
-        updateDocumentNonBlocking(studentDocRef, updates);
+        await updateDoc(studentDocRef, updates);
         toast({ title: 'Scan 1 Completed!', description: `You are marked as ${firstScanStatus.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}. Waiting for 2nd scan.` });
         return;
     }
@@ -356,21 +370,20 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         const now = new Date();
         const updates = {
             secondScanStatus: 'present',
-            secondScanTimestamp: now.toISOString(),
+            secondScanTimestamp: now,
             finalStatus: studentRecord.firstScanStatus, // Final status is 'present' or 'late' from the first scan
         };
 
-        updateDocumentNonBlocking(studentDocRef, updates);
+        await updateDoc(studentDocRef, updates);
         toast({ title: 'Attendance Marked!', description: 'Verification complete. You are fully marked as present.' });
         return;
     }
 
-    // ---- INVALID SCAN ROUND ----
     toast({ variant: 'destructive', title: 'Invalid Scan', description: 'This QR code is for a different scanning round.' });
 
-}, [session, attendance, firestore, devicesInUse, toast]);
+}, [session, firestore, devicesInUse, toast]);
   
-  const generateSecondQrCode = useCallback(async () => {
+  const generateSecondQrCode = useCallback(async (remainingClassLengthMinutes: number, breakLengthMinutes: number) => {
     const presentCount = Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length;
     const totalStudents = students.length;
     if (totalStudents === 0) {
@@ -379,9 +392,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
     }
     const absenceRateAfterBreak = totalStudents > 0 ? ((totalStudents - presentCount) / totalStudents) * 100 : 0;
     
-    const remainingClassLengthMinutes = 60; 
-    const breakLengthMinutes = 10;
-
     try {
       const result = await getOptimalQrDisplayTime({ 
         absenceRateAfterBreak, 
@@ -404,7 +414,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
     if(!firestore) return;
     const { readableCode, qrCodeValue } = generateNewCode('second');
 
-    // Batch update all students who completed the first scan
     const batch = writeBatch(firestore);
     attendance.forEach((record, studentId) => {
         if (record.firstScanStatus !== 'absent') {
@@ -446,3 +455,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    

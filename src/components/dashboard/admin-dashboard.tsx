@@ -14,13 +14,24 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 
 
 function AiVerifier() {
     const { session, generateSecondQrCode, activateSecondQr, attendance } = useStore();
+    const [remainingTime, setRemainingTime] = useState('60');
+    const [breakTime, setBreakTime] = useState('10');
+
     const presentCount = useMemo(() => Array.from(attendance.values()).filter(r => r.firstScanStatus !== 'absent').length, [attendance]);
     
     if (session.status !== 'active_first' || presentCount === 0) return null;
+
+    const handleGenerate = () => {
+        const remaining = parseInt(remainingTime, 10);
+        const breakLen = parseInt(breakTime, 10);
+        generateSecondQrCode(remaining, breakLen);
+    }
 
     return (
         <Card>
@@ -32,16 +43,38 @@ function AiVerifier() {
                 {session.secondScanTime ? (
                     <div>
                         <p className="text-sm font-semibold">AI Recommendation:</p>
-                        <p className="text-lg text-primary">{`Display 2nd QR at ${session.secondScanTime} minutes.`}</p>
+                        <p className="text-lg text-primary">{`Display 2nd QR at ${session.secondScanTime} minutes after break.`}</p>
                         <p className="text-xs text-muted-foreground">{session.secondScanReason}</p>
                          <Button onClick={activateSecondQr} className="mt-4 w-full">
                             <ScanLine className="mr-2 h-4 w-4" /> Activate Second Scan Now
                         </Button>
                     </div>
                 ) : (
-                    <Button onClick={generateSecondQrCode} className="w-full">
-                        Get Optimal Time
-                    </Button>
+                    <div className="space-y-4">
+                         <div className="space-y-2">
+                            <Label htmlFor="remaining-time">Remaining Class Time (minutes)</Label>
+                            <Input 
+                                id="remaining-time" 
+                                type="number" 
+                                value={remainingTime} 
+                                onChange={(e) => setRemainingTime(e.target.value)}
+                                placeholder="e.g., 60"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="break-time">Break Length (minutes)</Label>
+                            <Input 
+                                id="break-time" 
+                                type="number" 
+                                value={breakTime} 
+                                onChange={(e) => setBreakTime(e.target.value)}
+                                placeholder="e.g., 10"
+                            />
+                        </div>
+                        <Button onClick={handleGenerate} className="w-full">
+                            Get Optimal Time
+                        </Button>
+                    </div>
                 )}
             </CardContent>
         </Card>
@@ -269,3 +302,5 @@ export function AdminDashboard() {
     </div>
   );
 }
+
+    
