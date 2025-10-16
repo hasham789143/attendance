@@ -40,12 +40,8 @@ export function StudentDashboard() {
         } catch (error) {
           console.error('Error accessing camera:', error);
           setHasCameraPermission(false);
-          setShowScanner(false);
-          toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please enable camera permissions in your browser settings.',
-          });
+          setShowScanner(false); // Hide scanner if permission is denied
+          // The persistent alert will now be the main feedback
         }
       }
     };
@@ -56,7 +52,7 @@ export function StudentDashboard() {
         stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [showScanner, toast]);
+  }, [showScanner]);
 
 
   const handleScan = (result: string) => {
@@ -87,11 +83,7 @@ export function StudentDashboard() {
     if (error) {
        console.error('QR Scanner Error:', error);
        if (error.name === 'NotAllowedError') {
-            toast({
-              variant: 'destructive',
-              title: 'Camera Access Denied',
-              description: 'Please allow camera access in your browser settings.',
-            });
+            setHasCameraPermission(false); // Explicitly set permission to false to show persistent alert
        } else if (error.name === 'NotFoundError') {
             toast({
               variant: 'destructive',
@@ -198,6 +190,15 @@ export function StudentDashboard() {
         <p className="text-muted-foreground">Welcome, {userProfile?.name}.</p>
       </div>
 
+       {hasCameraPermission === false && (
+          <Alert variant="destructive">
+              <AlertTitle>Camera Access Required</AlertTitle>
+              <AlertDescription>
+                  Please allow camera access in your browser settings to use the scanner. You may need to reload the page after granting permission.
+              </AlertDescription>
+          </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Current Session Status</CardTitle>
@@ -225,14 +226,6 @@ export function StudentDashboard() {
                     />
                     <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
 
-                    {hasCameraPermission === false && (
-                        <Alert variant="destructive">
-                            <AlertTitle>Camera Access Required</AlertTitle>
-                            <AlertDescription>
-                                Please allow camera access to use this feature. You might need to reload the page after granting permission.
-                            </AlertDescription>
-                        </Alert>
-                    )}
                     <Button onClick={() => setShowScanner(false)} className="mt-4 w-full" variant="outline">
                         Cancel
                     </Button>
