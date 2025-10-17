@@ -275,8 +275,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         
         const archiveSessionRef = doc(collection(firestore, "sessions"));
         
-        // Ensure all properties are included when archiving
-        const sessionToArchive: AttendanceSession = {
+        const sessionToArchive: Partial<AttendanceSession> = {
           key: dbSession.key,
           adminUid: dbSession.adminUid,
           createdAt: dbSession.createdAt,
@@ -284,8 +283,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           lng: dbSession.lng,
           lateAfterMinutes: dbSession.lateAfterMinutes,
           subject: dbSession.subject,
-          secondKey: dbSession.secondKey,
-          secondScanLateAfterMinutes: dbSession.secondScanLateAfterMinutes
+          secondKey: dbSession.secondKey || null,
+          secondScanLateAfterMinutes: dbSession.secondScanLateAfterMinutes || null
         };
         batch.set(archiveSessionRef, sessionToArchive);
         
@@ -294,7 +293,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         recordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
-            // Ensure timestamps are correctly serialized to ISO strings
             const dataToArchive = {
                 ...recordData,
                 scan1_timestamp: recordData.scan1_timestamp ? recordData.scan1_timestamp.toDate().toISOString() : null,
