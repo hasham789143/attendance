@@ -24,7 +24,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-      if (scansCompleted < session.totalScans) return 'left_early';
+      if (session.totalScans && scansCompleted < session.totalScans) return 'left_early';
       if (record.scans.some(s => s.status === 'late')) return 'late';
       return 'present';
   };
@@ -76,20 +76,39 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   }
   
   const downloadPdf = () => {
-    const doc = new jsPDF();
-    const tableColumn = ["Roll Number", "Name", "Status", "Details", "Last Scan"];
-    const tableRows: any[] = [];
+    if (filteredAttendance.length === 0) return;
+    
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const totalScans = session.totalScans || 0;
+
+    const tableColumn: string[] = ["Roll No", "Name"];
+    for (let i = 1; i <= totalScans; i++) {
+        tableColumn.push(`Scan ${i} Status`, `Scan ${i} Time`);
+    }
+    tableColumn.push("Final Status");
+    
+    const tableRows: any[][] = [];
 
     filteredAttendance.forEach(record => {
-      const missedScans = getMissedScans(record);
-      const recordData = [
+      const rowData: (string | number)[] = [
         record.student.roll || 'N/A',
         record.student.name,
-        getFinalStatus(record).replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        missedScans?.props.children || '',
-        getTime(record)
       ];
-      tableRows.push(recordData);
+
+      for (let i = 0; i < totalScans; i++) {
+        const scan = record.scans[i] || { status: 'absent', minutesLate: 0, timestamp: null };
+        let status = scan.status.charAt(0).toUpperCase() + scan.status.slice(1);
+        if (scan.status === 'late' && scan.minutesLate > 0) {
+            status += ` (${scan.minutesLate}m)`;
+        }
+        const time = scan.timestamp ? new Date(scan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+        rowData.push(status, time);
+      }
+      
+      const finalStatus = getFinalStatus(record).replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      rowData.push(finalStatus);
+      
+      tableRows.push(rowData);
     });
 
     doc.autoTable({
@@ -98,10 +117,10 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         startY: 20,
         didDrawPage: function (data) {
             doc.setFontSize(20);
-            doc.text(`Attendance Report (${filter.toUpperCase()}) - ${format(new Date(), 'yyyy-MM-dd')}`, data.settings.margin.left, 15);
+            doc.text(`Live Attendance Report (${filter}) - ${format(new Date(), 'PPP p')}`, data.settings.margin.left, 15);
         }
     });
-    doc.save(`attendance-report-${filter}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`live-attendance-report-${filter}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   return (
@@ -155,7 +174,7 @@ export function AdminDashboard() {
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-      if (scansCompleted < session.totalScans) return 'left_early';
+      if (session.totalScans && scansCompleted < session.totalScans) return 'left_early';
       if (record.scans.some(s => s.status === 'late')) return 'late';
       return 'present';
   };

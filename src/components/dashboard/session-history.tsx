@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { AttendanceRecord, AttendanceStatus, UserProfile } from '../providers/store-provider';
 import { EditAttendanceDialog } from './edit-attendance-dialog';
 import { ScanData } from '@/models/backend';
+import { useStore } from '../providers/store-provider';
 
 // This represents the data as it is stored in Firestore archives.
 // Timestamps are stored as ISO strings.
@@ -55,18 +56,38 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
   };
 
   const downloadPdf = () => {
-    const doc = new jsPDF();
-    const tableColumn = ["Roll Number", "Name", "Status", "Last Scan"];
-    const tableRows: any[] = [];
+    if (sortedRecords.length === 0) return;
+    
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const totalScans = sortedRecords[0]?.scans.length || 0;
+
+    const tableColumn: string[] = ["Roll No", "Name"];
+    for (let i = 1; i <= totalScans; i++) {
+        tableColumn.push(`Scan ${i} Status`, `Scan ${i} Time`);
+    }
+    tableColumn.push("Final Status");
+
+    const tableRows: any[][] = [];
 
     sortedRecords.forEach(record => {
-      const recordData = [
+      const rowData: (string | number)[] = [
         record.student.roll || 'N/A',
         record.student.name,
-        record.finalStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        getTime(record)
       ];
-      tableRows.push(recordData);
+
+      record.scans.forEach(scan => {
+        let status = scan.status.charAt(0).toUpperCase() + scan.status.slice(1);
+        if (scan.status === 'late' && scan.minutesLate > 0) {
+            status += ` (${scan.minutesLate}m)`;
+        }
+        const time = scan.timestamp ? new Date(scan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+        rowData.push(status, time);
+      });
+      
+      const finalStatus = record.finalStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      rowData.push(finalStatus);
+
+      tableRows.push(rowData);
     });
 
     doc.autoTable({
