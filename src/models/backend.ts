@@ -28,6 +28,7 @@ export interface AttendanceSession {
     createdAt: string; // ISO 8601 timestamp.
     lat: number;
     lng: number;
+    radius: number; // Allowed radius in meters.
     lateAfterMinutes: number; // For first scan
     secondScanLateAfterMinutes?: number; // For second scan
     thirdScanLateAfterMinutes?: number; // For third scan

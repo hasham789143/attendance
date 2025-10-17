@@ -22,6 +22,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
   const [lateAfterMinutes, setLateAfterMinutes] = useState('10');
   const [subject, setSubject] = useState('');
   const [totalScans, setTotalScans] = useState('2');
+  const [radius, setRadius] = useState('100');
   const [loading, setLoading] = useState(false);
   const { startSession } = useStore();
 
@@ -30,21 +31,18 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
     setLoading(true);
     const minutes = parseInt(lateAfterMinutes, 10);
     const scans = parseInt(totalScans, 10);
+    const radiusMeters = parseInt(radius, 10);
 
-    if (isNaN(minutes) || minutes < 0 || isNaN(scans) || scans < 2 || scans > 3) {
-        // Simple validation, you could add a toast message
+    if (isNaN(minutes) || minutes < 0 || isNaN(scans) || scans < 2 || scans > 3 || isNaN(radiusMeters) || radiusMeters <= 0) {
         setLoading(false);
         return;
     }
     
-    // The startSession function is asynchronous because of geolocation
-    // but we don't need to await it here. The UI will update reactively.
-    startSession(minutes, subject, scans);
+    startSession(minutes, subject, scans, radiusMeters);
 
-    // We can close the dialog immediately.
     setLoading(false);
     setOpen(false);
-    setSubject(''); // Reset subject for next time
+    setSubject('');
   };
 
   return (
@@ -55,13 +53,13 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
           <DialogHeader>
             <DialogTitle>Start New Session</DialogTitle>
             <DialogDescription>
-              Configure the time window and subject for this attendance session.
+              Configure the time window and other settings for this attendance session.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="subject" className="text-right">
-                Subject
+                Title
               </Label>
               <Input
                 id="subject"
@@ -69,7 +67,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 className="col-span-3"
-                placeholder="e.g. Computer Science 101"
+                placeholder="e.g. Evening Attendance"
                 required
               />
             </div>
@@ -99,7 +97,20 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                 className="col-span-2"
                 required
                 min="0"
-                // This will apply to all scans for simplicity, can be expanded later
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="radius" className="text-right col-span-2">
+                Radius (meters)
+              </Label>
+              <Input
+                id="radius"
+                type="number"
+                value={radius}
+                onChange={(e) => setRadius(e.target.value)}
+                className="col-span-2"
+                required
+                min="1"
               />
             </div>
           </div>

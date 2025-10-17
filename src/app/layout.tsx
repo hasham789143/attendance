@@ -11,8 +11,8 @@ const fontBody = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Class Guardian',
-  description: 'A modern attendance system to ensure presence and engagement.',
+  title: 'Hostel Guardian',
+  description: 'A modern attendance system to ensure resident presence and safety.',
 };
 
 export default function RootLayout({

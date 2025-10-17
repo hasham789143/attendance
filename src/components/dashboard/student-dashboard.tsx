@@ -228,14 +228,13 @@ export function StudentDashboard() {
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
     const scansCompleted = myRecord.scans.filter(s => s.status !== 'absent').length;
-    // Show button if the current scan hasn't been completed yet.
     return session.status === 'active' && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold font-headline">Student Dashboard</h1>
+        <h1 className="text-2xl font-bold font-headline">Resident Dashboard</h1>
         <p className="text-muted-foreground">Welcome, {userProfile?.name}.</p>
       </div>
 

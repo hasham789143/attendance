@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download, MailWarning } from 'lucide-react';
+import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download, MailWarning, MapPin, AlarmClockCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Progress } from '../ui/progress';
 import { RegisterUserDialog } from './register-user-dialog';
@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { cn, getScanLabel } from '@/lib/utils';
 import { ScanData } from '@/models/backend';
 import { CorrectionRequestDialog } from './correction-request-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
@@ -60,8 +61,6 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   const getMissedScans = (record: AttendanceRecord) => {
     const missed: number[] = [];
     record.scans.forEach((scan, index) => {
-        // A scan is missed if it's absent, but a previous scan was present.
-        // This avoids calling everyone who missed scan 1 "missed scan 2"
         const hasPreviousScan = index > 0 ? record.scans[index-1].status !== 'absent' : true;
         if(scan.status === 'absent' && record.scans[0].status !== 'absent' && hasPreviousScan) {
             missed.push(index + 1);
@@ -84,7 +83,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
     const doc = new jsPDF({ orientation: 'landscape' });
     const totalScans = session.totalScans || 0;
 
-    const tableColumn: string[] = ["Roll No", "Name"];
+    const tableColumn: string[] = ["Room No", "Name"];
     for (let i = 1; i <= totalScans; i++) {
         tableColumn.push(`${getScanLabel(i)} Status`, `${getScanLabel(i)} Time`);
     }
@@ -141,11 +140,11 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
               onClose={onReviewClose} 
           />
       )}
-      <Card className="col-span-1 lg:col-span-2">
+      <Card>
         <CardHeader className='flex-row items-center justify-between'>
           <div>
               <CardTitle>Live Attendance Roster</CardTitle>
-              <CardDescription>{filteredAttendance.length} student(s) showing</CardDescription>
+              <CardDescription>{filteredAttendance.length} resident(s) showing</CardDescription>
           </div>
           <Button onClick={downloadPdf} variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
@@ -156,7 +155,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
           <Table>
             <TableHeader className="sticky top-0 bg-card">
               <TableRow>
-                <TableHead>Roll Number</TableHead>
+                <TableHead>Room Number</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Last Scan</TableHead>
@@ -216,8 +215,8 @@ export function AdminDashboard() {
     return counts;
   }, [attendance, session.totalScans]);
   
-  const totalStudents = students?.length || 0;
-  const attendancePercentage = totalStudents > 0 ? (present / totalStudents) * 100 : 0;
+  const totalResidents = students?.length || 0;
+  const attendancePercentage = totalResidents > 0 ? (present / totalResidents) * 100 : 0;
 
   const cardBaseClasses = "cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md";
   const activeCardClasses = "ring-2 ring-primary shadow-lg";
@@ -227,7 +226,7 @@ export function AdminDashboard() {
         <div className="flex items-center justify-between">
             <div>
                 <h1 className="text-2xl font-bold font-headline">Admin Dashboard</h1>
-                <p className="text-muted-foreground">Manage attendance sessions and monitor students.</p>
+                <p className="text-muted-foreground">Manage hostel attendance and monitor residents.</p>
             </div>
             <div className="flex items-center gap-2">
                  <RegisterUserDialog>
@@ -252,11 +251,11 @@ export function AdminDashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card onClick={() => setFilter('all')} className={cn(cardBaseClasses, filter === 'all' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Students</CardTitle>
+                    <CardTitle className="text-sm font-medium">Total Residents</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{totalStudents}</div>
+                    <div className="text-2xl font-bold">{totalResidents}</div>
                 </CardContent>
             </Card>
             <Card onClick={() => setFilter('present')} className={cn(cardBaseClasses, filter === 'present' && activeCardClasses)}>
@@ -291,7 +290,7 @@ export function AdminDashboard() {
         {session.status === 'active' && (
             <div className="space-y-2">
                 <Progress value={attendancePercentage} />
-                <p className="text-sm text-muted-foreground text-center">{present} of {totalStudents} students are fully present.</p>
+                <p className="text-sm text-muted-foreground text-center">{present} of {totalResidents} residents are fully present.</p>
             </div>
         )}
 
@@ -303,25 +302,55 @@ export function AdminDashboard() {
                 </CardContent>
             </Card>
         ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1 space-y-6">
-                  <QrCodeDisplay />
-                  {session.currentScan < session.totalScans && (
+           <Tabs defaultValue="roster" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="roster">Live Roster</TabsTrigger>
+                    <TabsTrigger value="qrcode">QR Code</TabsTrigger>
+                    <TabsTrigger value="info">Session Info</TabsTrigger>
+                </TabsList>
+                <TabsContent value="roster">
+                    <AttendanceList filter={filter} />
+                </TabsContent>
+                <TabsContent value="qrcode">
+                    <QrCodeDisplay />
+                </TabsContent>
+                <TabsContent value="info">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Next Scan</CardTitle>
-                            <CardDescription>When you are ready, activate the next scan to continue verifying attendance.</CardDescription>
+                            <CardTitle>Session Information</CardTitle>
+                            <CardDescription>Details and controls for the active session.</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <Button onClick={activateNextScan} className="w-full">
-                                <ScanLine className="mr-2 h-4 w-4" /> Activate {getScanLabel(session.currentScan + 1)}
-                            </Button>
+                        <CardContent className="space-y-6">
+                            <div className="flex items-center space-x-4 rounded-md border p-4">
+                                <MapPin className="h-6 w-6 text-primary"/>
+                                <div className="flex-1 space-y-1">
+                                <p className="text-sm font-medium leading-none">Allowed Radius</p>
+                                <p className="text-sm text-muted-foreground">
+                                    {session.radius ?? 100} meters
+                                </p>
+                                </div>
+                            </div>
+                             <div className="flex items-center space-x-4 rounded-md border p-4">
+                                <AlarmClockCheck className="h-6 w-6 text-primary"/>
+                                <div className="flex-1 space-y-1">
+                                <p className="text-sm font-medium leading-none">Late Policy</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Marked late after {session.lateAfterMinutes} minutes.
+                                </p>
+                                </div>
+                            </div>
+                            
+                            {session.currentScan < session.totalScans && (
+                                <div className="pt-4">
+                                     <Button onClick={activateNextScan} className="w-full">
+                                        <ScanLine className="mr-2 h-4 w-4" /> Activate {getScanLabel(session.currentScan + 1)}
+                                    </Button>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
-                  )}
-                </div>
-                <AttendanceList filter={filter} />
-            </div>
+                </TabsContent>
+            </Tabs>
         )}
     </div>
   );
@@ -329,5 +358,3 @@ export function AdminDashboard() {
 
 // Helper type
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
-
-    

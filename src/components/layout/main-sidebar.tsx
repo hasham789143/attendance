@@ -14,7 +14,7 @@ import { Logo } from '../logo';
 
 const adminNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/students', icon: Users, label: 'Students' },
+  { href: '/students', icon: Users, label: 'Residents' },
   { href: '/reports', icon: History, label: 'Reports' },
   { href: '/chat', icon: MessageSquare, label: 'Chat' },
 ];
@@ -59,7 +59,7 @@ export function MainSidebar({ className, mobile = false }: { className?: string,
                 className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base"
                 >
                 <Logo />
-                <span className="sr-only">Class Guardian</span>
+                <span className="sr-only">Hostel Guardian</span>
             </Link>
             {navItems.map(item => (
                 <Link

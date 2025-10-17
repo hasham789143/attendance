@@ -55,9 +55,6 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
     setLoading(true);
 
     try {
-        // This is a simplified client-side approach.
-        // A more robust solution would use a server-side function (e.g., Genkit flow)
-        // to create users without affecting the admin's session.
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
@@ -69,19 +66,13 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             role,
         };
 
-        // Create user profile in Firestore
         setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, {});
 
         toast({
             title: 'User Registered Successfully',
             description: `${name} has been added as a ${role}.`,
         });
-
-        // After creating the user, Firebase automatically signs in the new user.
-        // We need to sign the admin back in. This is a workaround for the client-side limitation.
-        // A better solution is a server-side endpoint. For now, the user may need to re-login.
         
-        // Reset form and close dialog
         setName('');
         setRoll('');
         setEmail('');
@@ -109,7 +100,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
           <DialogHeader>
             <DialogTitle>Register New User</DialogTitle>
             <DialogDescription>
-              Create a new account for a student or another administrator.
+              Create a new account for a resident or another administrator.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -127,7 +118,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="roll" className="text-right">
-                Roll Number
+                Room Number
               </Label>
               <Input
                 id="roll"
@@ -171,7 +162,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
                         <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="viewer">Student</SelectItem>
+                        <SelectItem value="viewer">Resident</SelectItem>
                         <SelectItem value="admin">Administrator</SelectItem>
                     </SelectContent>
                 </Select>

@@ -51,8 +51,8 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
         <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onCancel()}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Edit User: {user.name}</DialogTitle>
-                    <DialogDescription>Update the user's details below.</DialogDescription>
+                    <DialogTitle>Edit Resident: {user.name}</DialogTitle>
+                    <DialogDescription>Update the resident's details below.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
@@ -60,7 +60,7 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
                         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" />
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="roll" className="text-right">Roll Number</Label>
+                        <Label htmlFor="roll" className="text-right">Room Number</Label>
                         <Input id="roll" value={roll} onChange={(e) => setRoll(e.target.value)} className="col-span-3" />
                     </div>
                 </div>
@@ -74,7 +74,7 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
 }
 
 
-export default function StudentsPage() {
+export default function ResidentsPage() {
   const { firestore } = useFirebase();
   const { toast } = useToast();
 
@@ -82,19 +82,19 @@ export default function StudentsPage() {
   const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
-  const studentsQuery = useMemoFirebase(() => {
+  const residentsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled']));
   }, [firestore]);
 
-  const { data: students, isLoading } = useCollection<UserProfile>(studentsQuery);
-  const sortedStudents = students?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
+  const { data: residents, isLoading } = useCollection<UserProfile>(residentsQuery);
+  const sortedResidents = residents?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
 
   const handleUpdateUser = (userId: string, data: Partial<UserProfile>) => {
     if (!firestore) return;
     const userRef = doc(firestore, 'users', userId);
     updateDocumentNonBlocking(userRef, data);
-    toast({ title: "User Updated", description: "The user's details have been saved." });
+    toast({ title: "User Updated", description: "The resident's details have been saved." });
     setUserToEdit(null);
   }
 
@@ -110,9 +110,6 @@ export default function StudentsPage() {
   const handleDeleteUser = () => {
     if (!firestore || !userToDelete) return;
     const userRef = doc(firestore, 'users', userToDelete.uid);
-    // Note: This only deletes the user profile doc.
-    // The auth user and any related data (like attendance records) are not deleted.
-    // A cloud function would be needed for a full cleanup.
     deleteDocumentNonBlocking(userRef);
     toast({ title: "User Deleted", description: `${userToDelete.name} has been removed.` });
     setUserToDelete(null);
@@ -121,11 +118,11 @@ export default function StudentsPage() {
 
   return (
     <div>
-        <h1 className="text-2xl font-bold font-headline mb-4">Student Management</h1>
+        <h1 className="text-2xl font-bold font-headline mb-4">Resident Management</h1>
         <Card>
             <CardHeader>
-                <CardTitle>All Students</CardTitle>
-                <CardDescription>View, edit, and manage all student accounts.</CardDescription>
+                <CardTitle>All Residents</CardTitle>
+                <CardDescription>View, edit, and manage all resident accounts.</CardDescription>
             </CardHeader>
             <CardContent>
                  {isLoading ? (
@@ -137,14 +134,14 @@ export default function StudentsPage() {
                         <TableHeader>
                         <TableRow>
                             <TableHead>Name</TableHead>
-                            <TableHead>Roll Number</TableHead>
+                            <TableHead>Room Number</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                         </TableHeader>
                         <TableBody>
-                        {sortedStudents.map(user => (
+                        {sortedResidents.map(user => (
                             <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.name}</TableCell>
                                 <TableCell>{user.roll || 'N/A'}</TableCell>

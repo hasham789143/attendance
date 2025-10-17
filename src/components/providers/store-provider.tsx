@@ -40,6 +40,7 @@ export type Session = {
   lateAfterMinutes: number;
   secondScanLateAfterMinutes?: number;
   thirdScanLateAfterMinutes?: number;
+  radius?: number; // Allowed radius in meters
 
   lat?: number;
   lng?: number;
@@ -49,7 +50,7 @@ type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
   students: UserProfile[];
-  startSession: (lateAfterMinutes: number, subject: string, totalScans: number) => void;
+  startSession: (lateAfterMinutes: number, subject: string, totalScans: number, radius: number) => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
   activateNextScan: () => void;
@@ -113,6 +114,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     currentScan: 0,
     totalScans: 0,
     lateAfterMinutes: 0,
+    radius: 100,
   });
 
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
@@ -154,6 +156,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           lateAfterMinutes: dbSession.lateAfterMinutes,
           secondScanLateAfterMinutes: dbSession.secondScanLateAfterMinutes,
           thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes,
+          radius: dbSession.radius,
       });
     } else if (session.status === 'active') {
         setSession({
@@ -164,6 +167,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           currentScan: 0,
           totalScans: 0,
           lateAfterMinutes: 0,
+          radius: 100,
         });
         setAttendance(new Map());
     }
@@ -229,13 +233,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { prefix: parts[0] || '', readableCode: parts[1] || '', timestamp: parts[2] || '' };
   };
 
-  const startSession = useCallback(async (lateAfterMinutes: number, subject: string, totalScans: number) => {
+  const startSession = useCallback(async (lateAfterMinutes: number, subject: string, totalScans: number, radius: number) => {
     if (!navigator.geolocation) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
     }
     if (!firestore || !userProfile || !sessionDocRef || students.length === 0) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure students are loaded.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure residents are loaded.' });
         return;
     }
 
@@ -253,9 +257,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         totalScans: totalScans,
         currentScan: 1,
         lateAfterMinutes: lateAfterMinutes,
-        // Set all scan policies to the same for simplicity
         secondScanLateAfterMinutes: lateAfterMinutes,
         thirdScanLateAfterMinutes: totalScans === 3 ? lateAfterMinutes : null,
+        radius: radius,
       }
       
       const batch = writeBatch(firestore);
@@ -283,7 +287,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       await batch.commit();
       
-      toast({ title: 'Session Started', description: `Students can now perform the first scan.` });
+      toast({ title: 'Session Started', description: `Residents can now perform the first scan.` });
 
     }, (error) => {
         toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
@@ -298,7 +302,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         
         const archiveSessionRef = doc(collection(firestore, "sessions"));
         
-        // Finalize attendance before archiving
         const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
         recordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
@@ -316,7 +319,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         await batch.commit();
 
-        // Now archive with the finalized statuses
         const archiveBatch = writeBatch(firestore);
 
         const sessionToArchive: Partial<AttendanceSession> = {
@@ -325,6 +327,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           secondKey: dbSession.secondKey || null,
           thirdKey: dbSession.thirdKey || null,
           thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes || null,
+          radius: dbSession.radius || 100,
         };
         archiveBatch.set(archiveSessionRef, sessionToArchive);
         
@@ -337,11 +340,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 scans: recordData.scans.map((scan: any) => {
                     let timestamp = null;
                     if (scan.timestamp) {
-                        // Check if it's a Firestore Timestamp
                         if (scan.timestamp.toDate) {
                             timestamp = scan.timestamp.toDate().toISOString();
                         } 
-                        // Check if it's already an ISO string
                         else if (typeof scan.timestamp === 'string') {
                             timestamp = scan.timestamp;
                         }
@@ -354,10 +355,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 correctionRequest: recordData.correctionRequest || null,
             };
             archiveBatch.set(archiveRecordRef, dataToArchive);
-            archiveBatch.delete(recordDoc.ref); // Delete live record
+            archiveBatch.delete(recordDoc.ref);
         });
 
-        archiveBatch.delete(sessionDocRef); // Delete live session
+        archiveBatch.delete(sessionDocRef);
 
         await archiveBatch.commit();
 
@@ -398,13 +399,13 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         return;
     }
     
+    const allowedRadius = session.radius ?? 100; // Default to 100 meters
     const distance = getDistance({ lat: session.lat!, lng: session.lng! }, location);
-    if (distance > 100) { // 100 meters
+    if (distance > allowedRadius) {
         toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
         return;
     }
     
-    // Check if device has already been used for this scan
     if (devicesInUse.get(session.currentScan)?.has(deviceId)) {
         toast({ variant: 'destructive', title: 'Device Already Used', description: 'This device has already marked attendance for this scan.' });
         return;
@@ -415,7 +416,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         return;
     }
 
-    // For scans > 1, check if previous was completed
     if(session.currentScan > 1 && studentRecord.scans[currentScanIndex - 1].status === 'absent') {
         toast({ variant: 'destructive', title: `Scan ${session.currentScan -1} Missed`, description: `You must complete the previous scan before this one.` });
         return;
@@ -473,7 +473,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
             [keyFieldToUpdate]: qrCodeValue
         });
         
-        toast({ title: `Scan ${nextScanNumber} Activated`, description: 'Students must scan again to continue.' });
+        toast({ title: `Scan ${nextScanNumber} Activated`, description: 'Residents must scan again to continue.' });
 
     } catch (error) {
         toast({ variant: 'destructive', title: 'Activation Failed', description: 'Could not activate the next scan.' });
@@ -514,7 +514,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
 
     if (approved) {
         const updatedScans = [...studentRecord.scans];
-        // Mark first scan as present, assuming correction is for missing the first scan.
         updatedScans[0] = {
             status: 'present',
             minutesLate: 0,
@@ -559,5 +558,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    

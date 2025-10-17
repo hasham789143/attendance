@@ -84,6 +84,10 @@
           "type": "number",
           "description": "Longitude of the location where the attendance session is valid."
         },
+        "radius": {
+          "type": "number",
+          "description": "Allowed radius in meters for check-in."
+        },
         "lateAfterMinutes": {
           "type": "number",
           "description": "The number of minutes after which a student is marked as late for the first scan."
@@ -107,6 +111,7 @@
         "createdAt",
         "lat",
         "lng",
+        "radius",
         "totalScans",
         "currentScan"
       ]
