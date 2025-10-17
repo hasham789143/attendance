@@ -51,6 +51,7 @@ export interface AttendanceRecord {
     finalStatus: 'present' | 'late' | 'absent' | 'left_early';
 
     deviceId?: string; // Unique identifier of the device used.
+    photoURL?: string;
 }
 
 /**
