@@ -47,7 +47,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
       case 'present':
         return <Badge variant="default" className="bg-green-600">Present</Badge>;
       case 'late':
-        return <Badge variant="secondary" className="bg-yellow-500">Late ({totalMinutesLate}m)</Badge>;
+        return <Badge variant="secondary" className="bg-yellow-500 text-black">Late ({totalMinutesLate}m)</Badge>;
       case 'left_early':
         return <Badge variant="secondary" className="bg-orange-500">Left Early</Badge>;
       case 'absent':
@@ -75,7 +75,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
   const getTime = (record: AttendanceRecord) => {
     const lastScan = [...record.scans].reverse().find(s => s.timestamp);
-    return lastScan?.timestamp ? new Date(lastScan.timestamp).toLocaleTimeString() : '—';
+    return lastScan?.timestamp ? new Date(lastScan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
   }
   
   const downloadPdf = () => {
@@ -329,3 +329,5 @@ export function AdminDashboard() {
 
 // Helper type
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
+
+    

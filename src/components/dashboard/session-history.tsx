@@ -16,6 +16,7 @@ import { EditAttendanceDialog } from './edit-attendance-dialog';
 import { ScanData } from '@/models/backend';
 import { useStore } from '../providers/store-provider';
 import { getScanLabel } from '@/lib/utils';
+import { produce } from 'immer';
 
 // This represents the data as it is stored in Firestore archives.
 // Timestamps are stored as ISO strings.
@@ -107,11 +108,28 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
     setRecordToEdit(record);
   };
   
-  const handleSaveEdit = (newStatus: AttendanceStatus) => {
+  const handleSaveEdit = (updatedRecord: StoredAttendanceRecord) => {
     if (!recordToEdit || !firestore) return;
 
     const recordRef = doc(firestore, 'sessions', sessionId, 'records', recordToEdit.id);
-    updateDocumentNonBlocking(recordRef, { finalStatus: newStatus });
+    
+    // Recalculate finalStatus based on the edited scans
+    const scansCompleted = updatedRecord.scans.filter(s => s.status !== 'absent').length;
+    let newFinalStatus: AttendanceStatus = 'absent';
+    
+    if (scansCompleted === updatedRecord.scans.length) {
+        const isLate = updatedRecord.scans.some(s => s.status === 'late');
+        newFinalStatus = isLate ? 'late' : 'present';
+    } else if (scansCompleted > 0) {
+        newFinalStatus = 'left_early';
+    }
+
+    const dataToUpdate = {
+        scans: updatedRecord.scans,
+        finalStatus: newFinalStatus
+    };
+
+    updateDocumentNonBlocking(recordRef, dataToUpdate);
     setRecordToEdit(null);
   };
 
@@ -171,3 +189,5 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
     </Card>
   );
 }
+
+    
