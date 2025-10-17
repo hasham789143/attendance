@@ -1,16 +1,21 @@
 
 'use client';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, writeBatch, doc } from 'firebase/firestore';
-import { Loader2, Trash2 } from 'lucide-react';
-import { AttendanceSession } from '@/models/backend';
-import { SessionHistory } from '@/components/dashboard/session-history';
+import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, query, where, doc } from 'firebase/firestore';
+import { useState } from 'react';
+import { Loader2, MoreHorizontal, Pen, Trash2, UserCog, UserX, CheckCircle, Ban } from 'lucide-react';
+import { UserProfile } from '@/components/providers/auth-provider';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,131 +26,212 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format } from 'date-fns';
-import { Button } from '@/components/ui/button';
-import { useState } from 'react';
-import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast.tsx';
+import { Badge } from '@/components/ui/badge';
+
+function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
+    const [name, setName] = useState(user.name);
+    const [roll, setRoll] = useState(user.roll || '');
+
+    const handleSave = () => {
+        onSave({ name, roll });
+    }
+
+    return (
+        <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onCancel()}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit User: {user.name}</DialogTitle>
+                    <DialogDescription>Update the user's details below.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="name" className="text-right">Name</Label>
+                        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="roll" className="text-right">Roll Number</Label>
+                        <Input id="roll" value={roll} onChange={(e) => setRoll(e.target.value)} className="col-span-3" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onCancel}>Cancel</Button>
+                    <Button onClick={handleSave}>Save Changes</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
 
 
-export default function ReportsPage() {
+export default function StudentsPage() {
   const { firestore } = useFirebase();
   const { toast } = useToast();
-  const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const sessionsQuery = useMemoFirebase(() => {
+  const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
+  const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+
+  const studentsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    // Query for the last 20 sessions, ordered by creation date
-    return query(
-      collection(firestore, "sessions"), 
-      orderBy("createdAt", "desc"),
-      limit(20)
-    );
+    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled']));
   }, [firestore]);
 
-  const { data: sessions, isLoading, mutate } = useCollection<AttendanceSession & { id: string }>(sessionsQuery);
+  const { data: students, isLoading } = useCollection<UserProfile>(studentsQuery);
+  const sortedStudents = students?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
 
-  const getTriggerText = (session: AttendanceSession) => {
-    const dateString = format(new Date(session.createdAt), 'PPP p');
-    if (session.subject) {
-      return `${session.subject} - ${dateString}`;
-    }
-    return `Session from ${dateString}`;
-  };
+  const handleUpdateUser = (userId: string, data: Partial<UserProfile>) => {
+    if (!firestore) return;
+    const userRef = doc(firestore, 'users', userId);
+    updateDocumentNonBlocking(userRef, data);
+    toast({ title: "User Updated", description: "The user's details have been saved." });
+    setUserToEdit(null);
+  }
 
-  const handleSelectSession = (sessionId: string, isSelected: boolean) => {
-    setSelectedSessions(prev => {
-      const newSet = new Set(prev);
-      if (isSelected) {
-        newSet.add(sessionId);
-      } else {
-        newSet.delete(sessionId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleDeleteSelected = async () => {
-    if (!firestore || selectedSessions.size === 0) return;
-
-    const batch = writeBatch(firestore);
-    selectedSessions.forEach(sessionId => {
-      batch.delete(doc(firestore, "sessions", sessionId));
-      // Note: This doesn't delete subcollections (records). A cloud function would be needed for that.
-      // For this client-side implementation, we are only deleting the session document itself.
-    });
-
-    try {
-      await batch.commit();
-      toast({ title: "Sessions Deleted", description: `${selectedSessions.size} session(s) have been deleted.` });
-      setSelectedSessions(new Set());
-      setIsDeleteDialogOpen(false);
-      if (mutate) {
-        mutate();
-      }
-    } catch (error: any) {
-      toast({ variant: 'destructive', title: "Error", description: `Could not delete sessions: ${error.message}` });
-    }
-  };
+  const handleToggleStatus = () => {
+    if (!firestore || !userToToggleStatus) return;
+    const userRef = doc(firestore, 'users', userToToggleStatus.uid);
+    const newRole = userToToggleStatus.role === 'disabled' ? 'viewer' : 'disabled';
+    updateDocumentNonBlocking(userRef, { role: newRole });
+    toast({ title: `User ${newRole === 'viewer' ? 'Enabled' : 'Disabled'}`, description: `${userToToggleStatus.name}'s account has been updated.` });
+    setUserToToggleStatus(null);
+  }
+  
+  const handleDeleteUser = () => {
+    if (!firestore || !userToDelete) return;
+    const userRef = doc(firestore, 'users', userToDelete.uid);
+    // Note: This only deletes the user profile doc.
+    // The auth user and any related data (like attendance records) are not deleted.
+    // A cloud function would be needed for a full cleanup.
+    deleteDocumentNonBlocking(userRef);
+    toast({ title: "User Deleted", description: `${userToDelete.name} has been removed.` });
+    setUserToDelete(null);
+  }
 
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold font-headline">Attendance Reports</h1>
-        {selectedSessions.size > 0 && (
-          <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete Selected ({selectedSessions.size})
-          </Button>
+        <h1 className="text-2xl font-bold font-headline mb-4">Student Management</h1>
+        <Card>
+            <CardHeader>
+                <CardTitle>All Students</CardTitle>
+                <CardDescription>View, edit, and manage all student accounts.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 {isLoading ? (
+                    <div className="flex justify-center items-center h-40">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                        <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Roll Number</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                        {sortedStudents.map(user => (
+                            <TableRow key={user.id}>
+                                <TableCell className="font-medium">{user.name}</TableCell>
+                                <TableCell>{user.roll || 'N/A'}</TableCell>
+                                <TableCell>{user.email}</TableCell>
+                                <TableCell>
+                                    {user.role === 'disabled' ? (
+                                        <Badge variant="destructive">Disabled</Badge>
+                                    ) : (
+                                        <Badge variant="default" className="bg-green-600">Active</Badge>
+                                    )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                     <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" className="h-8 w-8 p-0">
+                                            <span className="sr-only">Open menu</span>
+                                            <MoreHorizontal className="h-4 w-4" />
+                                        </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                            <DropdownMenuItem onClick={() => setUserToEdit(user)}>
+                                                <Pen className="mr-2 h-4 w-4" /> Edit
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => setUserToToggleStatus(user)}>
+                                                {user.role === 'disabled' ? <CheckCircle className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
+                                                {user.role === 'disabled' ? 'Enable' : 'Disable'}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem className="text-destructive" onClick={() => setUserToDelete(user)}>
+                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                        </TableBody>
+                    </Table>
+                 )}
+            </CardContent>
+        </Card>
+        
+        {userToEdit && (
+            <EditUserDialog 
+                user={userToEdit}
+                onCancel={() => setUserToEdit(null)}
+                onSave={(data) => handleUpdateUser(userToEdit.uid, data)}
+            />
         )}
-      </div>
-      {isLoading ? (
-        <div className="flex justify-center items-center h-40">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : (
-        <Accordion type="single" collapsible className="w-full">
-            {sessions && sessions.length > 0 ? (
-                sessions.map((session, index) => (
-                    <AccordionItem value={`item-${index}`} key={session.id}>
-                        <div className="flex items-center gap-2">
-                           <Checkbox
-                             id={`select-${session.id}`}
-                             checked={selectedSessions.has(session.id)}
-                             onCheckedChange={(checked) => handleSelectSession(session.id, !!checked)}
-                             className="ml-4"
-                           />
-                           <AccordionTrigger className="flex-1">
-                                {getTriggerText(session)}
-                           </AccordionTrigger>
-                        </div>
-                        <AccordionContent>
-                           <SessionHistory sessionId={session.id} sessionDate={new Date(session.createdAt)} />
-                        </AccordionContent>
-                    </AccordionItem>
-                ))
-            ) : (
-                <p className="text-muted-foreground text-center py-8">No historical session data found.</p>
-            )}
-        </Accordion>
-      )}
 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the selected {selectedSessions.size} session(s). The records within the sessions will not be deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {userToToggleStatus && (
+             <AlertDialog open={true} onOpenChange={(isOpen) => !isOpen && setUserToToggleStatus(null)}>
+                <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       You are about to {userToToggleStatus.role === 'disabled' ? 'enable' : 'disable'} the account for {userToToggleStatus.name}. 
+                       A disabled user will not be able to log in.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleToggleStatus}>Confirm</AlertDialogAction>
+                </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )}
+
+        {userToDelete && (
+             <AlertDialog open={true} onOpenChange={(isOpen) => !isOpen && setUserToDelete(null)}>
+                <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       This action is permanent and cannot be undone. This will delete the user profile for {userToDelete.name}.
+                       It will not delete their authentication record or past attendance data.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )}
+
     </div>
   );
 }

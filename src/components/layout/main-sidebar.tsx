@@ -1,4 +1,3 @@
-
 'use client';
 
 import { cn } from '@/lib/utils';
@@ -16,6 +15,7 @@ import { Logo } from '../logo';
 const adminNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/students', icon: Users, label: 'Students' },
+  { href: '/reports', icon: History, label: 'Reports' },
   { href: '/chat', icon: MessageSquare, label: 'Chat' },
 ];
 
@@ -67,7 +67,7 @@ export function MainSidebar({ className, mobile = false }: { className?: string,
                     href={item.href}
                     className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8",
-                        { 'bg-accent text-accent-foreground': pathname === item.href }
+                        { 'bg-accent text-accent-foreground': pathname.startsWith(item.href) }
                     )}
                     >
                     <item.icon className="h-5 w-5" />
