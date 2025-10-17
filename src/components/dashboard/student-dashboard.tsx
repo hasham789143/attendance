@@ -134,12 +134,14 @@ export function StudentDashboard() {
       );
     }
 
-    const { finalStatus, firstScanStatus, minutesLate } = record;
+    const { finalStatus, scan1_status, scan1_minutesLate, scan2_minutesLate } = record;
+    const totalMinutesLate = (scan1_minutesLate || 0) + (scan2_minutesLate || 0);
+
     
     if (finalStatus === 'present' || finalStatus === 'late') {
         const statusBadge = finalStatus === 'present' 
             ? <Badge className="bg-green-600">Present</Badge>
-            : <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge>;
+            : <Badge className="bg-yellow-500">Late ({totalMinutesLate}m)</Badge>;
       return (
         <div className="text-center">
           <div className="text-lg">You are marked {statusBadge}</div>
@@ -149,8 +151,8 @@ export function StudentDashboard() {
     }
     
     if (finalStatus === 'left_early') {
-      const scan1Badge = firstScanStatus === 'late' 
-          ? <Badge className="bg-yellow-500">Late ({minutesLate}m)</Badge>
+      const scan1Badge = scan1_status === 'late' 
+          ? <Badge className="bg-yellow-500">Late ({scan1_minutesLate}m)</Badge>
           : <Badge className="bg-green-500">Completed</Badge>;
       
       const waitingMessage = session.status === 'active_first' 
@@ -178,11 +180,11 @@ export function StudentDashboard() {
     if (!isClient || !myRecord) return false;
 
     // Show for first scan if not yet scanned
-    if (session.status === 'active_first' && myRecord.firstScanStatus === 'absent') {
+    if (session.status === 'active_first' && myRecord.scan1_status === 'absent') {
       return true;
     }
     // Show for second scan if first is done but second is not
-    if (session.status === 'active_second' && myRecord.firstScanStatus !== 'absent' && myRecord.secondScanStatus === 'absent') {
+    if (session.status === 'active_second' && myRecord.scan1_status !== 'absent' && (myRecord.scan2_status === 'absent' || myRecord.scan2_status === 'n/a')) {
       return true;
     }
     

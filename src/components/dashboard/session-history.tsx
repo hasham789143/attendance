@@ -11,14 +11,21 @@ import { Badge } from '@/components/ui/badge';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
-import { AttendanceRecord, UserProfile } from '../providers/store-provider';
+import { AttendanceRecord, AttendanceStatus, UserProfile } from '../providers/store-provider';
 import { EditAttendanceDialog } from './edit-attendance-dialog';
 
-type StoredAttendanceRecord = Omit<AttendanceRecord, 'student' | 'firstScanTimestamp' | 'secondScanTimestamp'> & { 
+// This represents the data as it is stored in Firestore archives.
+// Timestamps are stored as ISO strings.
+export type StoredAttendanceRecord = { 
   id: string; // id is on the document, not in the data
-  student: { uid: string, name: string, roll?: string, email: string },
-  firstScanTimestamp: string | null;
-  secondScanTimestamp: string | null;
+  student: UserProfile,
+  scan1_status: 'present' | 'late' | 'absent';
+  scan1_timestamp: string | null;
+  scan1_minutesLate: number;
+  scan2_status: 'present' | 'late' | 'absent' | 'n/a';
+  scan2_timestamp: string | null;
+  scan2_minutesLate: number;
+  finalStatus: AttendanceStatus;
 };
 
 export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; sessionDate: Date }) {
@@ -35,9 +42,10 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
   const sortedRecords = records?.sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')) || [];
   
   const getStatusBadge = (record: StoredAttendanceRecord) => {
+    const totalMinutesLate = (record.scan1_minutesLate || 0) + (record.scan2_minutesLate || 0);
     switch (record.finalStatus) {
       case 'present': return <Badge className="bg-green-600">Present</Badge>;
-      case 'late': return <Badge className="bg-yellow-500 text-black">Late ({record.minutesLate}m)</Badge>;
+      case 'late': return <Badge className="bg-yellow-500 text-black">Late ({totalMinutesLate}m)</Badge>;
       case 'absent': return <Badge variant="destructive">Absent</Badge>;
       case 'left_early': return <Badge className="bg-orange-500">Left Early</Badge>;
       default: return <Badge variant="outline">N/A</Badge>;
@@ -45,8 +53,8 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
   };
 
   const getTime = (record: StoredAttendanceRecord) => {
-    if (record.secondScanTimestamp) return new Date(record.secondScanTimestamp).toLocaleTimeString();
-    if (record.firstScanTimestamp) return new Date(record.firstScanTimestamp).toLocaleTimeString();
+    if (record.scan2_timestamp) return new Date(record.scan2_timestamp).toLocaleTimeString();
+    if (record.scan1_timestamp) return new Date(record.scan1_timestamp).toLocaleTimeString();
     return '—';
   };
 
@@ -81,7 +89,7 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
     setRecordToEdit(record);
   };
   
-  const handleSaveEdit = (newStatus: StoredAttendanceRecord['finalStatus']) => {
+  const handleSaveEdit = (newStatus: AttendanceStatus) => {
     if (!recordToEdit || !firestore) return;
 
     const recordRef = doc(firestore, 'sessions', sessionId, 'records', recordToEdit.id);

@@ -18,23 +18,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { AttendanceRecord } from '../providers/store-provider';
-
-type StoredAttendanceRecord = Omit<AttendanceRecord, 'student' | 'firstScanTimestamp' | 'secondScanTimestamp'> & { 
-  student: { uid: string, name: string, roll?: string, email: string },
-  firstScanTimestamp: string | null;
-  secondScanTimestamp: string | null;
-};
+import type { StoredAttendanceRecord } from './session-history';
+import { AttendanceStatus } from '../providers/store-provider';
 
 
 interface EditAttendanceDialogProps {
   record: StoredAttendanceRecord;
-  onSave: (newStatus: StoredAttendanceRecord['finalStatus']) => void;
+  onSave: (newStatus: AttendanceStatus) => void;
   onCancel: () => void;
 }
 
 export function EditAttendanceDialog({ record, onSave, onCancel }: EditAttendanceDialogProps) {
-  const [newStatus, setNewStatus] = useState<StoredAttendanceRecord['finalStatus']>(record.finalStatus);
+  const [newStatus, setNewStatus] = useState<AttendanceStatus>(record.finalStatus);
 
   const handleSave = () => {
     onSave(newStatus);
@@ -54,7 +49,7 @@ export function EditAttendanceDialog({ record, onSave, onCancel }: EditAttendanc
             <Label htmlFor="status" className="text-right">
               Status
             </Label>
-            <Select onValueChange={(value) => setNewStatus(value as StoredAttendanceRecord['finalStatus'])} value={newStatus}>
+            <Select onValueChange={(value) => setNewStatus(value as AttendanceStatus)} value={newStatus}>
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a status" />
               </SelectTrigger>

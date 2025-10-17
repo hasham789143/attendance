@@ -46,6 +46,10 @@
           "type": "string",
           "description": "The unique key or code associated with this attendance session, often used in QR codes."
         },
+        "secondKey": {
+          "type": "string",
+          "description": "The unique key for the second scan."
+        },
         "adminUid": {
           "type": "string",
           "description": "Reference to User. Unique identifier of the admin who created the session."
@@ -65,7 +69,11 @@
         },
         "lateAfterMinutes": {
           "type": "number",
-          "description": "The number of minutes after which a student is marked as late."
+          "description": "The number of minutes after which a student is marked as late for the first scan."
+        },
+        "secondScanLateAfterMinutes": {
+          "type": "number",
+          "description": "The number of minutes after which a student is marked as late for the second scan."
         },
         "subject": {
           "type": "string",
@@ -89,7 +97,7 @@
         "student": {
           "$ref": "#/entities/User"
         },
-        "firstScanStatus": {
+        "scan1_status": {
           "type": "string",
           "enum": [
             "present",
@@ -97,13 +105,28 @@
             "absent"
           ]
         },
-        "secondScanStatus": {
+        "scan1_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "scan1_minutesLate": {
+            "type": "number"
+        },
+        "scan2_status": {
           "type": "string",
           "enum": [
             "present",
+            "late",
             "absent",
             "n/a"
           ]
+        },
+        "scan2_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "scan2_minutesLate": {
+            "type": "number"
         },
         "finalStatus": {
           "type": "string",
@@ -114,25 +137,14 @@
             "left_early"
           ]
         },
-        "firstScanTimestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "secondScanTimestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "minutesLate": {
-          "type": "number"
-        },
         "deviceId": {
           "type": "string"
         }
       },
       "required": [
         "student",
-        "firstScanStatus",
-        "secondScanStatus",
+        "scan1_status",
+        "scan2_status",
         "finalStatus"
       ]
     },

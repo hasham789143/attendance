@@ -28,31 +28,29 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   }, [filter, sortedAttendance]);
 
   const getStatusBadge = (record: AttendanceRecord) => {
-    const { finalStatus, firstScanStatus, minutesLate } = record;
+    const { finalStatus, scan1_minutesLate, scan2_minutesLate } = record;
+    const totalMinutesLate = (scan1_minutesLate || 0) + (scan2_minutesLate || 0);
 
     switch (finalStatus) {
-      case 'present': 
+      case 'present':
         return <Badge variant="default" className="bg-green-600">Present</Badge>;
-      case 'left_early': 
+      case 'late':
+        return <Badge variant="secondary" className="bg-yellow-500">Late ({totalMinutesLate}m)</Badge>;
+      case 'left_early':
         return <Badge variant="secondary" className="bg-orange-500">Left Early</Badge>;
-      case 'absent': 
+      case 'absent':
         return <Badge variant="destructive">Absent</Badge>;
-      case 'late': // This case might not be hit if finalStatus logic is tight
-        return <Badge variant="secondary" className="bg-yellow-500">Late ({minutesLate}m)</Badge>;
-      default: 
-        if (firstScanStatus === 'late') {
-            return <Badge variant="secondary" className="bg-yellow-500">Late ({minutesLate}m)</Badge>;
-        }
+      default:
         return <Badge variant="outline">N/A</Badge>;
     }
   };
 
   const getTime = (record: AttendanceRecord) => {
-    if (record.secondScanTimestamp) {
-      return record.secondScanTimestamp.toLocaleTimeString();
+    if (record.scan2_timestamp) {
+      return record.scan2_timestamp.toLocaleTimeString();
     }
-    if (record.firstScanTimestamp) {
-      return record.firstScanTimestamp.toLocaleTimeString();
+    if (record.scan1_timestamp) {
+      return record.scan1_timestamp.toLocaleTimeString();
     }
     return '—';
   }
@@ -132,7 +130,8 @@ export function AdminDashboard() {
   const { present, absent, leftEarly } = useMemo(() => {
     const counts = { present: 0, absent: 0, leftEarly: 0 };
     attendance.forEach(record => {
-        if(record.finalStatus === 'present') counts.present++;
+      // Final status 'late' should be counted as 'present' for the top-level stats
+        if(record.finalStatus === 'present' || record.finalStatus === 'late') counts.present++;
         else if (record.finalStatus === 'left_early') counts.leftEarly++;
         else if (record.finalStatus === 'absent') counts.absent++;
     });

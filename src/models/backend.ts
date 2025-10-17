@@ -19,12 +19,14 @@ export interface User {
  * Represents a specific attendance session, typically associated with a class or event.
  */
 export interface AttendanceSession {
-    key: string; // The unique key or code associated with this attendance session.
+    key: string; // The unique key for the first scan.
+    secondKey?: string; // The unique key for the second scan.
     adminUid: string; // UID of the admin who created the session.
     createdAt: string; // ISO 8601 timestamp.
     lat: number;
     lng: number;
-    lateAfterMinutes?: number;
+    lateAfterMinutes?: number; // For first scan
+    secondScanLateAfterMinutes?: number; // For second scan
     subject?: string; // The subject of the class session
 }
 
@@ -33,15 +35,22 @@ export interface AttendanceSession {
  * Represents a single attendance record for a user in a specific session.
  */
 export interface AttendanceRecord {
-    uid: string; // UID of the user.
-    name: string;
-    roll?: string;
-    email: string;
-    status: string; // e.g., 'present'
-    timestamp: string; // ISO 8601 timestamp.
-    photoURL?: string; // URL of the photo taken during attendance.
-    deviceId: string; // Unique identifier of the device used.
-    distance?: number; // Distance from the session location.
+    student: User;
+    
+    /** @enum {string} */
+    scan1_status: 'present' | 'late' | 'absent';
+    scan1_timestamp: string | null;
+    scan1_minutesLate: number;
+
+    /** @enum {string} */
+    scan2_status: 'present' | 'late' | 'absent' | 'n/a';
+    scan2_timestamp: string | null;
+    scan2_minutesLate: number;
+
+    /** @enum {string} */
+    finalStatus: 'present' | 'late' | 'absent' | 'left_early';
+
+    deviceId?: string; // Unique identifier of the device used.
 }
 
 /**
