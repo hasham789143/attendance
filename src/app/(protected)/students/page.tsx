@@ -10,6 +10,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import { format } from 'date-fns';
 
 
 export default function ReportsPage() {
@@ -27,6 +28,14 @@ export default function ReportsPage() {
 
   const { data: sessions, isLoading } = useCollection<AttendanceSession & { id: string }>(sessionsQuery);
 
+  const getTriggerText = (session: AttendanceSession) => {
+    const dateString = format(new Date(session.createdAt), 'PPP p');
+    if (session.subject) {
+      return `${session.subject} - ${dateString}`;
+    }
+    return `Session from ${dateString}`;
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold font-headline mb-4">Attendance Reports</h1>
@@ -39,7 +48,7 @@ export default function ReportsPage() {
             {sessions && sessions.length > 0 ? (
                 sessions.map((session, index) => (
                     <AccordionItem value={`item-${index}`} key={session.id}>
-                        <AccordionTrigger>Session from {new Date(session.createdAt).toLocaleString()}</AccordionTrigger>
+                        <AccordionTrigger>{getTriggerText(session)}</AccordionTrigger>
                         <AccordionContent>
                            <SessionHistory sessionId={session.id} sessionDate={new Date(session.createdAt)} />
                         </AccordionContent>

@@ -1,3 +1,4 @@
+'use client';
 // Note: This file is used to generate the backend.json file.
 // It is not used directly by the application.
 // You can edit this file to define the data models for your application.
@@ -24,6 +25,7 @@ export interface AttendanceSession {
     lat: number;
     lng: number;
     lateAfterMinutes?: number;
+    subject?: string; // The subject of the class session
 }
 
 

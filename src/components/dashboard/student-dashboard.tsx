@@ -134,7 +134,7 @@ export function StudentDashboard() {
       );
     }
 
-    const { finalStatus, firstScanStatus, secondScanStatus, minutesLate } = record;
+    const { finalStatus, firstScanStatus, minutesLate } = record;
     
     if (finalStatus === 'present' || finalStatus === 'late') {
         const statusBadge = finalStatus === 'present' 

@@ -1,11 +1,10 @@
 'use client';
 
-import { getOptimalQrDisplayTime } from '@/ai/flows/dynamic-qr-optimization.flow';
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
-import { collection, query, where, doc, writeBatch, updateDoc, getDocs, DocumentReference, getDoc } from 'firebase/firestore';
-import { useCollection, useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { collection, query, where, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
+import { useCollection, useDoc, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
 import { AttendanceSession } from '@/models/backend';
 
@@ -40,7 +39,7 @@ type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
   students: UserProfile[];
-  startSession: (lateAfterMinutes: number) => void;
+  startSession: (lateAfterMinutes: number, subject: string) => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
   activateSecondQr: () => void;
@@ -115,8 +114,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { readableCode } = parseQrCodeValue(dbSession.key);
       
       setSession(prevSession => {
-         // Determine if we should maintain the second scan status
-        const newStatus = prevSession.status === 'active_second' ? 'active_second' : 'active_first';
+        const currentStatus = prevSession.status;
+        const newStatus = (currentStatus === 'active_first' || currentStatus === 'active_second') ? currentStatus : 'active_first';
+
         const qrCodeValue = newStatus === 'active_second' ? prevSession.qrCodeValue : dbSession.key;
         const newReadableCode = newStatus === 'active_second' ? prevSession.readableCode : readableCode;
 
@@ -143,7 +143,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         setAttendance(new Map());
     }
-  }, [dbSession, session.status]);
+  }, [dbSession]);
 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
@@ -199,7 +199,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { prefix: parts[0] || '', readableCode: parts[1] || '', timestamp: parts[2] || '' };
   };
 
-  const startSession = useCallback(async (lateAfterMinutes: number) => {
+  const startSession = useCallback(async (lateAfterMinutes: number, subject: string) => {
     if (!navigator.geolocation) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
@@ -220,6 +220,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         lat: latitude,
         lng: longitude,
         lateAfterMinutes: lateAfterMinutes,
+        subject: subject,
       }
       
       // Batch write: create session doc and initialize all student records
@@ -260,15 +261,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     try {
         const batch = writeBatch(firestore);
+        
         const archiveSessionRef = doc(collection(firestore, "sessions"));
-        batch.set(archiveSessionRef, dbSession);
+        const sessionToArchive = { ...dbSession };
+        delete (sessionToArchive as any).key; // Remove live key before archiving
+        batch.set(archiveSessionRef, sessionToArchive);
         
         const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
 
         recordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
-            batch.set(archiveRecordRef, recordData);
+            // Ensure timestamps are correctly serialized
+            const dataToArchive = {
+                ...recordData,
+                firstScanTimestamp: recordData.firstScanTimestamp ? recordData.firstScanTimestamp.toDate() : null,
+                secondScanTimestamp: recordData.secondScanTimestamp ? recordData.secondScanTimestamp.toDate() : null
+            };
+            batch.set(archiveRecordRef, dataToArchive);
         });
         
         recordsSnapshot.forEach(recordDoc => {
@@ -344,7 +354,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
             deviceId: deviceId,
         };
 
-        await updateDoc(studentDocRef, updates);
+        updateDocumentNonBlocking(studentDocRef, updates);
         toast({ title: 'Scan 1 Completed!', description: `You are marked as ${firstScanStatus.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}. Waiting for 2nd scan.` });
         return;
     }
@@ -373,7 +383,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
             finalStatus: studentRecord.firstScanStatus, // Final status is 'present' or 'late' from the first scan
         };
 
-        await updateDoc(studentDocRef, updates);
+        updateDocumentNonBlocking(studentDocRef, updates);
         toast({ title: 'Attendance Marked!', description: 'Verification complete. You are fully marked as present.' });
         return;
     }
@@ -385,20 +395,25 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
   
   const activateSecondQr = useCallback(async () => {
     if(!firestore) return;
-    const { readableCode, qrCodeValue } = generateNewCode('second');
+    
+    try {
+        const batch = writeBatch(firestore);
+        attendance.forEach((record, studentId) => {
+            if (record.firstScanStatus !== 'absent') {
+                const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+                batch.update(studentDocRef, { secondScanStatus: 'absent' });
+            }
+        });
+        await batch.commit();
 
-    const batch = writeBatch(firestore);
-    attendance.forEach((record, studentId) => {
-        if (record.firstScanStatus !== 'absent') {
-            const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
-            batch.update(studentDocRef, { secondScanStatus: 'absent' });
-        }
-    });
-    
-    await batch.commit();
-    
-    setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
-    toast({ title: 'Second Scan Activated', description: 'Students must scan again to be marked fully present.' });
+        const { readableCode, qrCodeValue } = generateNewCode('second');
+        setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
+        toast({ title: 'Second Scan Activated', description: 'Students must scan again to be marked fully present.' });
+
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Activation Failed', description: 'Could not update records for the second scan.' });
+        console.error("Failed to activate second scan:", error);
+    }
   }, [firestore, attendance, toast]);
 
 
@@ -427,5 +442,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    

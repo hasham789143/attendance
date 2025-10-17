@@ -64,8 +64,12 @@
           "description": "Longitude of the location where the attendance session is valid."
         },
         "lateAfterMinutes": {
-            "type": "number",
-            "description": "The number of minutes after which a student is marked as late."
+          "type": "number",
+          "description": "The number of minutes after which a student is marked as late."
+        },
+        "subject": {
+          "type": "string",
+          "description": "The subject of the class session."
         }
       },
       "required": [
@@ -82,25 +86,55 @@
       "type": "object",
       "description": "Represents a single attendance record for a user in a specific session.",
       "properties": {
-        "student": { "$ref": "#/entities/User" },
+        "student": {
+          "$ref": "#/entities/User"
+        },
         "firstScanStatus": {
           "type": "string",
-          "enum": ["present", "late", "absent"]
+          "enum": [
+            "present",
+            "late",
+            "absent"
+          ]
         },
         "secondScanStatus": {
           "type": "string",
-          "enum": ["present", "absent", "n/a"]
+          "enum": [
+            "present",
+            "absent",
+            "n/a"
+          ]
         },
         "finalStatus": {
           "type": "string",
-          "enum": ["present", "late", "absent", "left_early"]
+          "enum": [
+            "present",
+            "late",
+            "absent",
+            "left_early"
+          ]
         },
-        "firstScanTimestamp": { "type": "string", "format": "date-time" },
-        "secondScanTimestamp": { "type": "string", "format": "date-time" },
-        "minutesLate": { "type": "number" },
-        "deviceId": { "type": "string" }
+        "firstScanTimestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "secondScanTimestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "minutesLate": {
+          "type": "number"
+        },
+        "deviceId": {
+          "type": "string"
+        }
       },
-      "required": [ "student", "firstScanStatus", "secondScanStatus", "finalStatus" ]
+      "required": [
+        "student",
+        "firstScanStatus",
+        "secondScanStatus",
+        "finalStatus"
+      ]
     },
     "Settings": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -108,37 +142,55 @@
       "type": "object",
       "description": "Application-wide settings.",
       "properties": {
-        "isSelfieRequired": { "type": "boolean" },
-        "isRegistrationOpen": { "type": "boolean" }
+        "isSelfieRequired": {
+          "type": "boolean"
+        },
+        "isRegistrationOpen": {
+          "type": "boolean"
+        }
       }
     }
   },
   "auth": {
-    "providers": ["password"]
+    "providers": [
+      "password"
+    ]
   },
   "firestore": {
     "/users/{userId}": {
-        "schema": { "$ref": "#/entities/User" },
-        "description": "Stores user profile information. The 'userId' is the Firebase Authentication UID."
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Stores user profile information. The 'userId' is the Firebase Authentication UID."
     },
     "/sessions/current": {
-      "schema": { "$ref": "#/entities/AttendanceSession" },
+      "schema": {
+        "$ref": "#/entities/AttendanceSession"
+      },
       "description": "Stores the current active attendance session. This is a single document."
     },
     "/sessions/current/records/{userId}": {
-      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "schema": {
+        "$ref": "#/entities/AttendanceRecord"
+      },
       "description": "Stores the live attendance records for each student in the currently active session."
     },
     "/sessions/{sessionId}": {
-        "schema": { "$ref": "#/entities/AttendanceSession" },
-        "description": "Stores an archived attendance session."
+      "schema": {
+        "$ref": "#/entities/AttendanceSession"
+      },
+      "description": "Stores an archived attendance session."
     },
     "/sessions/{sessionId}/records/{recordId}": {
-      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "schema": {
+        "$ref": "#/entities/AttendanceRecord"
+      },
       "description": "Stores individual attendance records for a specific historical session."
     },
     "/settings/attendance": {
-      "schema": { "$ref": "#/entities/Settings" },
+      "schema": {
+        "$ref": "#/entities/Settings"
+      },
       "description": "Stores application-wide settings. There is only one document with id 'attendance' in this collection."
     }
   }
