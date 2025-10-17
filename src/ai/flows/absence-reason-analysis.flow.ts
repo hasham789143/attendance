@@ -30,6 +30,7 @@ const AnalyzeAbsenceReasonsOutputSchema = z.object({
   summary: z.string().describe('A summary of the common reasons for student absences.'),
   recommendations: z
     .string()
+
     .describe('Recommendations for addressing the identified reasons and improving attendance rates.'),
 });
 export type AnalyzeAbsenceReasonsOutput = z.infer<typeof AnalyzeAbsenceReasonsOutputSchema>;
@@ -56,8 +57,8 @@ const prompt = ai.definePrompt({
 
   Output:
   {{
-    "summary": <summary of common absence reasons>,
-    "recommendations": <recommendations for improvement>
+    "summary": "A summary of common absence reasons.",
+    "recommendations": "Recommendations for improvement."
   }}
   `,
 });

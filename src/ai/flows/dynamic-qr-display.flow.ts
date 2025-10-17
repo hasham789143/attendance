@@ -52,8 +52,8 @@ const prompt = ai.definePrompt({
 
   Output:
   {{
-    "displayTimeMinutes": <optimal display time in minutes>,
-    "reasoning": <brief explanation for the chosen display time>
+    "displayTimeMinutes": 30,
+    "reasoning": "A brief explanation for the chosen display time."
   }}
   `,
 });
