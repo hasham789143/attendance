@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle, Send } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle, Send, ShieldAlert } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
@@ -173,8 +173,23 @@ export function StudentDashboard() {
     }
 
     if (record.correctionRequest?.status === 'pending') {
-        return <div className="text-center text-lg text-yellow-600">Correction request is pending admin approval.</div>
+        return (
+            <div className="text-center text-lg text-yellow-600 flex items-center justify-center gap-2">
+                <ShieldAlert className="h-5 w-5" />
+                Correction request is pending admin approval.
+            </div>
+        );
     }
+    
+    if (record.correctionRequest?.status === 'denied') {
+        return (
+            <div className="text-center text-lg text-destructive flex items-center justify-center gap-2">
+                <ShieldAlert className="h-5 w-5" />
+                Your correction request was denied.
+            </div>
+        );
+    }
+
 
     const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
 
@@ -203,7 +218,7 @@ export function StudentDashboard() {
       <div className="text-center space-y-4">
         <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
         <p className="text-muted-foreground">Scan the QR code to mark your attendance.</p>
-        {record.scans[0].status === 'absent' && session.currentScan > 1 && (
+        {record.scans[0].status === 'absent' && session.currentScan > 1 && !record.correctionRequest && (
             <Button variant="secondary" onClick={() => setShowCorrectionDialog(true)}>Request Correction</Button>
         )}
       </div>
@@ -213,6 +228,7 @@ export function StudentDashboard() {
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
     const scansCompleted = myRecord.scans.filter(s => s.status !== 'absent').length;
+    // Show button if the current scan hasn't been completed yet.
     return session.status === 'active' && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
   }
 

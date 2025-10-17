@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download } from 'lucide-react';
+import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download, MailWarning } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Progress } from '../ui/progress';
 import { RegisterUserDialog } from './register-user-dialog';
@@ -15,10 +15,13 @@ import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ScanData } from '@/models/backend';
+import { CorrectionRequestDialog } from './correction-request-dialog';
 
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
-  const { attendance, session } = useStore();
+  const { attendance, session, handleCorrectionRequest } = useStore();
+  const [requestToReview, setRequestToReview] = useState<AttendanceRecord | null>(null);
+
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
@@ -123,46 +126,69 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
     doc.save(`live-attendance-report-${filter}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
+  const onReviewClose = (approved?: boolean) => {
+    if (requestToReview && approved !== undefined) {
+      handleCorrectionRequest(requestToReview.student.uid, approved);
+    }
+    setRequestToReview(null);
+  };
+
   return (
-    <Card className="col-span-1 lg:col-span-2">
-      <CardHeader className='flex-row items-center justify-between'>
-        <div>
-            <CardTitle>Live Attendance Roster</CardTitle>
-            <CardDescription>{filteredAttendance.length} student(s) showing</CardDescription>
-        </div>
-         <Button onClick={downloadPdf} variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Download PDF
-        </Button>
-      </CardHeader>
-      <CardContent className="max-h-[600px] overflow-y-auto">
-        <Table>
-          <TableHeader className="sticky top-0 bg-card">
-            <TableRow>
-              <TableHead>Roll Number</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Last Scan</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredAttendance.map((record) => (
-              <TableRow key={record.student.uid}>
-                <TableCell className="font-medium">{record.student.roll || 'N/A'}</TableCell>
-                <TableCell>
-                    <div>{record.student.name}</div>
-                    {getMissedScans(record)}
-                </TableCell>
-                <TableCell>{getStatusBadge(record)}</TableCell>
-                <TableCell className="text-right">
-                    {getTime(record)}
-                </TableCell>
+    <>
+      {requestToReview && (
+          <CorrectionRequestDialog 
+              record={requestToReview} 
+              onClose={onReviewClose} 
+          />
+      )}
+      <Card className="col-span-1 lg:col-span-2">
+        <CardHeader className='flex-row items-center justify-between'>
+          <div>
+              <CardTitle>Live Attendance Roster</CardTitle>
+              <CardDescription>{filteredAttendance.length} student(s) showing</CardDescription>
+          </div>
+          <Button onClick={downloadPdf} variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Download PDF
+          </Button>
+        </CardHeader>
+        <CardContent className="max-h-[600px] overflow-y-auto">
+          <Table>
+            <TableHeader className="sticky top-0 bg-card">
+              <TableRow>
+                <TableHead>Roll Number</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Last Scan</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+            </TableHeader>
+            <TableBody>
+              {filteredAttendance.map((record) => (
+                <TableRow key={record.student.uid}>
+                  <TableCell className="font-medium">{record.student.roll || 'N/A'}</TableCell>
+                  <TableCell>
+                      <div className='flex items-center gap-2'>
+                        {record.student.name}
+                        {record.correctionRequest?.status === 'pending' && (
+                            <Button variant="secondary" size="sm" onClick={() => setRequestToReview(record)}>
+                                <MailWarning className="h-4 w-4 mr-2" />
+                                Review Request
+                            </Button>
+                        )}
+                      </div>
+                      {getMissedScans(record)}
+                  </TableCell>
+                  <TableCell>{getStatusBadge(record)}</TableCell>
+                  <TableCell className="text-right">
+                      {getTime(record)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

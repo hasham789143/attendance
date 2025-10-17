@@ -53,6 +53,7 @@ type StoreContextType = {
   markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
   activateNextScan: () => void;
   requestCorrection: (studentId: string, reason: string) => void;
+  handleCorrectionRequest: (studentId: string, approved: boolean) => void;
 };
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -322,6 +323,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           key: dbSession.key,
           secondKey: dbSession.secondKey || null,
           thirdKey: dbSession.thirdKey || null,
+          thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes || null,
         };
         archiveBatch.set(archiveSessionRef, sessionToArchive);
         
@@ -483,6 +485,38 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
 
   }, [firestore, session.status, toast]);
 
+  const handleCorrectionRequest = useCallback(async(studentId: string, approved: boolean) => {
+    if (!firestore) return;
+    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+
+    const studentRecordSnap = await getDoc(studentDocRef);
+    if (!studentRecordSnap.exists()) return;
+    
+    const studentRecord = studentRecordSnap.data();
+
+    const updateData: any = {
+      'correctionRequest.status': approved ? 'approved' : 'denied'
+    };
+
+    if (approved) {
+        const updatedScans = [...studentRecord.scans];
+        // Mark first scan as present, assuming correction is for missing the first scan.
+        updatedScans[0] = {
+            status: 'present',
+            minutesLate: 0,
+            timestamp: new Date().toISOString(),
+            deviceId: 'manual_admin_override',
+        };
+        updateData.scans = updatedScans;
+        toast({ title: 'Request Approved', description: `${studentRecord.student.name} marked as present for scan 1.` });
+    } else {
+        toast({ title: 'Request Denied', description: `Correction request for ${studentRecord.student.name} has been denied.` });
+    }
+
+    updateDocumentNonBlocking(studentDocRef, updateData);
+
+  }, [firestore, toast]);
+
 
   const value = useMemo(() => ({
     session,
@@ -493,7 +527,8 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
     markAttendance,
     activateNextScan,
     requestCorrection,
-  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection]);
+    handleCorrectionRequest,
+  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection, handleCorrectionRequest]);
 
 
   return (
