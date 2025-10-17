@@ -253,7 +253,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         lateAfterMinutes: lateAfterMinutes,
         // Set all scan policies to the same for simplicity
         secondScanLateAfterMinutes: lateAfterMinutes,
-        thirdScanLateAfterMinutes: totalScans === 3 ? lateAfterMinutes : undefined,
+        thirdScanLateAfterMinutes: totalScans === 3 ? lateAfterMinutes : null,
       }
       
       const batch = writeBatch(firestore);
