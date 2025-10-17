@@ -2,10 +2,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
-import { AuthProvider } from '@/components/providers/auth-provider';
 import { Toaster } from '@/components/ui/toaster';
-import { ToasterProvider } from '@/hooks/use-toast.tsx';
-import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { Providers } from '@/components/providers';
 
 const fontBody = Inter({
   subsets: ['latin'],
@@ -25,13 +23,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn('antialiased', fontBody.variable)}>
-        <ToasterProvider>
-          <FirebaseClientProvider>
-            <AuthProvider>
-              {children}
-            </AuthProvider>
-          </FirebaseClientProvider>
-        </ToasterProvider>
+        <Providers>
+          {children}
+        </Providers>
         <Toaster />
       </body>
     </html>
