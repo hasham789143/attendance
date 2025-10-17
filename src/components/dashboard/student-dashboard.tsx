@@ -9,7 +9,7 @@ import { Loader2, QrCode, CheckCircle, Send, ShieldAlert } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
-import { getDeviceId } from '@/lib/utils';
+import { getDeviceId, getScanLabel } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
@@ -207,7 +207,7 @@ export function StudentDashboard() {
     if (scansCompleted > 0) {
         return (
             <div className="text-center">
-              <div className="text-lg">Scan {scansCompleted + 1} of {session.totalScans} is next.</div>
+              <div className="text-lg">{getScanLabel(scansCompleted + 1)} of {session.totalScans} is next.</div>
               <p className="text-muted-foreground">Please scan the next QR code when it is presented.</p>
             </div>
         );
@@ -261,7 +261,7 @@ export function StudentDashboard() {
           <CardDescription>
             {session.status !== 'active'
               ? 'There is no active attendance session.'
-              : `Session is active. Current scan: ${session.currentScan} of ${session.totalScans}`}
+              : `Session is active. Current scan: ${getScanLabel(session.currentScan)} of ${session.totalScans}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -318,7 +318,7 @@ export function StudentDashboard() {
                 ) : (
                   <Button onClick={() => setShowScanner(true)} size="lg" disabled={isLoading}>
                       <QrCode className="mr-2 h-5 w-5" />
-                      Scan QR Code for Scan #{session.currentScan}
+                      Scan QR Code for {getScanLabel(session.currentScan)}
                   </Button>
                 )}
               </>

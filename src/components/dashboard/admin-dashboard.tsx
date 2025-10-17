@@ -13,7 +13,7 @@ import { StartSessionDialog } from './start-session-dialog';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn, getScanLabel } from '@/lib/utils';
 import { ScanData } from '@/models/backend';
 import { CorrectionRequestDialog } from './correction-request-dialog';
 
@@ -68,7 +68,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         }
     });
     if (missed.length > 0) {
-        return <span className="text-xs text-destructive">Missed Scan(s): {missed.join(', ')}</span>
+        return <span className="text-xs text-destructive">Missed: {missed.map(m => getScanLabel(m, true)).join(', ')}</span>
     }
     return null;
   }
@@ -86,7 +86,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
     const tableColumn: string[] = ["Roll No", "Name"];
     for (let i = 1; i <= totalScans; i++) {
-        tableColumn.push(`Scan ${i} Status`, `Scan ${i} Time`);
+        tableColumn.push(`${getScanLabel(i)} Status`, `${getScanLabel(i)} Time`);
     }
     tableColumn.push("Final Status");
     
@@ -314,7 +314,7 @@ export function AdminDashboard() {
                         </CardHeader>
                         <CardContent>
                             <Button onClick={activateNextScan} className="w-full">
-                                <ScanLine className="mr-2 h-4 w-4" /> Activate Scan {session.currentScan + 1}
+                                <ScanLine className="mr-2 h-4 w-4" /> Activate {getScanLabel(session.currentScan + 1)}
                             </Button>
                         </CardContent>
                     </Card>

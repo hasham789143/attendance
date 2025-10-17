@@ -39,3 +39,10 @@ export function getDeviceId(): string {
   }
   return deviceId;
 }
+
+
+export function getScanLabel(scanNumber: number, short = false): string {
+    const labels = ["First", "Second", "Third"];
+    const prefix = labels[scanNumber - 1] || `Scan ${scanNumber}`;
+    return short ? prefix : `${prefix} Class`;
+}

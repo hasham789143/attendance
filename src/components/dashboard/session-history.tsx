@@ -15,6 +15,7 @@ import { AttendanceRecord, AttendanceStatus, UserProfile } from '../providers/st
 import { EditAttendanceDialog } from './edit-attendance-dialog';
 import { ScanData } from '@/models/backend';
 import { useStore } from '../providers/store-provider';
+import { getScanLabel } from '@/lib/utils';
 
 // This represents the data as it is stored in Firestore archives.
 // Timestamps are stored as ISO strings.
@@ -63,7 +64,7 @@ export function SessionHistory({ sessionId, sessionDate }: { sessionId: string; 
 
     const tableColumn: string[] = ["Roll No", "Name"];
     for (let i = 1; i <= totalScans; i++) {
-        tableColumn.push(`Scan ${i} Status`, `Scan ${i} Time`);
+        tableColumn.push(`${getScanLabel(i)} Status`, `${getScanLabel(i)} Time`);
     }
     tableColumn.push("Final Status");
 

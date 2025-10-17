@@ -2,6 +2,7 @@
 
 import { useStore } from '@/components/providers/store-provider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getScanLabel } from '@/lib/utils';
 import Image from 'next/image';
 
 export function QrCodeDisplay() {
@@ -14,7 +15,7 @@ export function QrCodeDisplay() {
   return (
     <Card className="flex flex-col items-center justify-center p-6 bg-card">
       <CardHeader className="text-center p-2">
-        <CardTitle>Scan {session.currentScan} of {session.totalScans}</CardTitle>
+        <CardTitle>{getScanLabel(session.currentScan)} of {session.totalScans}</CardTitle>
         <CardDescription>Scan the QR code or enter the code below.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-4 p-2">
