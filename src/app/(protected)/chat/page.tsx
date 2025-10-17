@@ -3,8 +3,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
-import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy } from 'firebase/firestore';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useStore } from '@/components/providers/store-provider';
+import { useToast } from '@/hooks/use-toast.tsx';
 
 type ChatMessage = {
   id?: string;
@@ -27,26 +28,31 @@ type ChatMessage = {
   senderUid: string;
   senderName: string;
   senderRole: 'admin' | 'viewer';
-  timestamp: any; // Firestore timestamp
+  timestamp: any; // Firestore timestamp or Date
 };
 
 export default function ChatPage() {
   const { userProfile } = useAuth();
   const { firestore } = useFirebase();
   const { students } = useStore();
+  const { toast } = useToast();
   
   const [selectedStudentUid, setSelectedStudentUid] = useState<string>('');
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesCount = useRef(0);
+
 
   useEffect(() => {
     if (userProfile?.role === 'viewer') {
       setSelectedStudentUid(userProfile.uid);
-    } else if (students.length > 0) {
+    } else if (students.length > 0 && !selectedStudentUid) {
+      // Default to the first student if none is selected
       setSelectedStudentUid(students[0].uid);
     }
-  }, [userProfile, students]);
+  }, [userProfile, students, selectedStudentUid]);
 
   const chatCollectionRef = useMemoFirebase(() => {
     if (!firestore || !selectedStudentUid) return null;
@@ -60,17 +66,30 @@ export default function ChatPage() {
 
   const { data: messages, isLoading } = useCollection<ChatMessage>(chatQuery);
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
-    if (scrollAreaRef.current) {
-        // A slight delay to ensure the DOM has updated with new messages
-        setTimeout(() => {
-            const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-            if (viewport) {
-                viewport.scrollTop = viewport.scrollHeight;
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    if (messages && messages.length > prevMessagesCount.current) {
+        const latestMessage = messages[messages.length - 1];
+        // Don't notify the user about their own messages
+        if (latestMessage && latestMessage.senderUid !== userProfile?.uid) {
+            // Only show toast if the user is not actively viewing the tab
+             if (document.visibilityState !== 'visible') {
+                toast({
+                    title: `New Message from ${latestMessage.senderName}`,
+                    description: latestMessage.text,
+                });
             }
-        }, 100);
+        }
     }
-}, [messages]);
+    prevMessagesCount.current = messages ? messages.length : 0;
+  }, [messages, userProfile?.uid, toast]);
 
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -85,19 +104,7 @@ export default function ChatPage() {
       senderRole: userProfile.role,
     };
 
-    // We pass the raw object; Firestore server timestamp will be added on the backend.
-    // For the purpose of our non-blocking helper, we can just pass the core data.
-    // A more complete implementation might use a cloud function to add the timestamp.
-    const messageWithClientTimestamp = {
-        ...newMessage,
-        timestamp: new Date(), // Use client-side date for optimistic update
-    };
-
-    // Here we need to use a function that can handle server timestamps,
-    // which our current `addDocumentNonBlocking` doesn't support directly.
-    // For this implementation, we will use the blocking `addDoc` with a server timestamp.
      try {
-        const { addDoc, serverTimestamp } = await import('firebase/firestore');
         await addDoc(chatCollectionRef, {
             ...newMessage,
             timestamp: serverTimestamp()
@@ -105,6 +112,11 @@ export default function ChatPage() {
         setMessage('');
     } catch (error) {
         console.error("Error sending message:", error);
+         toast({
+            variant: "destructive",
+            title: "Failed to send message",
+            description: "Could not send your message. Please try again."
+        });
     } finally {
         setIsSending(false);
     }
@@ -183,7 +195,7 @@ export default function ChatPage() {
                     <p className="font-bold">{msg.senderName}</p>
                     <p>{msg.text}</p>
                      <p className="text-xs opacity-70 mt-1">
-                        {msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString() : new Date(msg.timestamp).toLocaleTimeString()}
+                        {msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'sending...'}
                     </p>
                   </div>
                    {msg.senderUid === userProfile?.uid && (
@@ -195,8 +207,9 @@ export default function ChatPage() {
                   )}
                 </div>
               ))}
+              <div ref={messagesEndRef} />
               {!isLoading && messages?.length === 0 && (
-                <p className="text-center text-muted-foreground">No messages yet. Start the conversation!</p>
+                <p className="text-center text-muted-foreground py-10">No messages yet. Start the conversation!</p>
               )}
             </div>
           </ScrollArea>
