@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useToast } from '@/hooks/use-toast.tsx';
@@ -185,7 +186,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     student: liveRecordData.student,
                     scans: liveRecordData.scans.map((scan: any) => ({
                         ...scan,
-                        timestamp: scan.timestamp ? new Date(scan.timestamp.seconds * 1000) : null
+                        timestamp: scan.timestamp ? new Date(scan.timestamp.seconds ? scan.timestamp.seconds * 1000 : scan.timestamp) : null
                     })),
                     finalStatus: liveRecordData.finalStatus,
                     correctionRequest: liveRecordData.correctionRequest
@@ -333,10 +334,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
             const dataToArchive = {
                 ...recordData,
-                scans: recordData.scans.map((scan: any) => ({
-                    ...scan,
-                    timestamp: scan.timestamp ? scan.timestamp.toDate().toISOString() : null,
-                })),
+                scans: recordData.scans.map((scan: any) => {
+                    let timestamp = null;
+                    if (scan.timestamp) {
+                        // Check if it's a Firestore Timestamp
+                        if (scan.timestamp.toDate) {
+                            timestamp = scan.timestamp.toDate().toISOString();
+                        } 
+                        // Check if it's already an ISO string
+                        else if (typeof scan.timestamp === 'string') {
+                            timestamp = scan.timestamp;
+                        }
+                    }
+                    return {
+                        ...scan,
+                        timestamp,
+                    };
+                }),
                 correctionRequest: recordData.correctionRequest || null,
             };
             archiveBatch.set(archiveRecordRef, dataToArchive);
@@ -545,3 +559,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
