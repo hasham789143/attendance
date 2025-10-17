@@ -1,3 +1,4 @@
+
 'use client';
 
 import { cn } from '@/lib/utils';
@@ -5,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   History,
+  MessageSquare,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -14,11 +16,13 @@ import { Logo } from '../logo';
 const adminNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/students', icon: Users, label: 'Students' },
+  { href: '/chat', icon: MessageSquare, label: 'Chat' },
 ];
 
 const studentNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/history', icon: History, label: 'My History' },
+  { href: '/chat', icon: MessageSquare, label: 'Chat' },
 ];
 
 export function MainSidebar({ className, mobile = false }: { className?: string, mobile?: boolean }) {

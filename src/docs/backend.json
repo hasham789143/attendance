@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -139,6 +140,9 @@
         },
         "deviceId": {
           "type": "string"
+        },
+        "photoURL": {
+            "type": "string"
         }
       },
       "required": [
@@ -146,6 +150,38 @@
         "scan1_status",
         "scan2_status",
         "finalStatus"
+      ]
+    },
+    "ChatMessage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ChatMessage",
+      "type": "object",
+      "description": "Represents a single message in a chat.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "senderUid": {
+          "type": "string"
+        },
+        "senderName": {
+          "type": "string"
+        },
+        "senderRole": {
+          "type": "string",
+          "enum": ["admin", "viewer"]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "text",
+        "senderUid",
+        "senderName",
+        "senderRole",
+        "timestamp"
       ]
     },
     "Settings": {
@@ -198,6 +234,12 @@
         "$ref": "#/entities/AttendanceRecord"
       },
       "description": "Stores individual attendance records for a specific historical session."
+    },
+    "/chats/{studentUid}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ChatMessage"
+      },
+      "description": "Stores chat messages for a specific student. Admins can access all chats."
     },
     "/settings/attendance": {
       "schema": {
