@@ -15,11 +15,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useStore } from '@/components/providers/store-provider';
 import { Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 export function StartSessionDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [lateAfterMinutes, setLateAfterMinutes] = useState('10');
   const [subject, setSubject] = useState('');
+  const [totalScans, setTotalScans] = useState('2');
   const [loading, setLoading] = useState(false);
   const { startSession } = useStore();
 
@@ -27,7 +29,9 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
     e.preventDefault();
     setLoading(true);
     const minutes = parseInt(lateAfterMinutes, 10);
-    if (isNaN(minutes) || minutes < 0) {
+    const scans = parseInt(totalScans, 10);
+
+    if (isNaN(minutes) || minutes < 0 || isNaN(scans) || scans < 2 || scans > 3) {
         // Simple validation, you could add a toast message
         setLoading(false);
         return;
@@ -35,7 +39,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
     
     // The startSession function is asynchronous because of geolocation
     // but we don't need to await it here. The UI will update reactively.
-    startSession(minutes, subject);
+    startSession(minutes, subject, scans);
 
     // We can close the dialog immediately.
     setLoading(false);
@@ -69,9 +73,23 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                 required
               />
             </div>
+             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="totalScans" className="text-right">
+                Total Scans
+              </Label>
+               <Select onValueChange={setTotalScans} value={totalScans}>
+                  <SelectTrigger className="col-span-3">
+                      <SelectValue placeholder="Select number of scans" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      <SelectItem value="2">2 Scans (Default)</SelectItem>
+                      <SelectItem value="3">3 Scans</SelectItem>
+                  </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="lateAfter" className="text-right col-span-2">
-                Mark as Late after (minutes)
+                Late After (minutes)
               </Label>
               <Input
                 id="lateAfter"
@@ -81,6 +99,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                 className="col-span-2"
                 required
                 min="0"
+                // This will apply to all scans for simplicity, can be expanded later
               />
             </div>
           </div>

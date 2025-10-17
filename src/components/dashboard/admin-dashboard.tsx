@@ -14,22 +14,31 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { ScanData } from '@/models/backend';
 
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
-  const { attendance } = useStore();
+  const { attendance, session } = useStore();
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
+  
+  const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
+      const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
+      if (scansCompleted === 0) return 'absent';
+      if (scansCompleted < session.totalScans) return 'left_early';
+      if (record.scans.some(s => s.status === 'late')) return 'late';
+      return 'present';
+  };
 
   const filteredAttendance = useMemo(() => {
     if (filter === 'all') {
       return sortedAttendance;
     }
-    return sortedAttendance.filter(record => record.finalStatus === filter);
+    return sortedAttendance.filter(record => getFinalStatus(record) === filter);
   }, [filter, sortedAttendance]);
 
   const getStatusBadge = (record: AttendanceRecord) => {
-    const { finalStatus, scan1_minutesLate, scan2_minutesLate } = record;
-    const totalMinutesLate = (scan1_minutesLate || 0) + (scan2_minutesLate || 0);
+    const finalStatus = getFinalStatus(record);
+    const totalMinutesLate = record.scans.reduce((acc, scan) => acc + (scan.minutesLate || 0), 0);
 
     switch (finalStatus) {
       case 'present':
@@ -44,27 +53,40 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         return <Badge variant="outline">N/A</Badge>;
     }
   };
+  
+  const getMissedScans = (record: AttendanceRecord) => {
+    const missed: number[] = [];
+    record.scans.forEach((scan, index) => {
+        // A scan is missed if it's absent, but a previous scan was present.
+        // This avoids calling everyone who missed scan 1 "missed scan 2"
+        const hasPreviousScan = index > 0 ? record.scans[index-1].status !== 'absent' : true;
+        if(scan.status === 'absent' && record.scans[0].status !== 'absent' && hasPreviousScan) {
+            missed.push(index + 1);
+        }
+    });
+    if (missed.length > 0) {
+        return <span className="text-xs text-destructive">Missed Scan(s): {missed.join(', ')}</span>
+    }
+    return null;
+  }
 
   const getTime = (record: AttendanceRecord) => {
-    if (record.scan2_timestamp) {
-      return record.scan2_timestamp.toLocaleTimeString();
-    }
-    if (record.scan1_timestamp) {
-      return record.scan1_timestamp.toLocaleTimeString();
-    }
-    return '—';
+    const lastScan = [...record.scans].reverse().find(s => s.timestamp);
+    return lastScan?.timestamp ? new Date(lastScan.timestamp).toLocaleTimeString() : '—';
   }
   
   const downloadPdf = () => {
     const doc = new jsPDF();
-    const tableColumn = ["Roll Number", "Name", "Status", "Last Scan"];
+    const tableColumn = ["Roll Number", "Name", "Status", "Details", "Last Scan"];
     const tableRows: any[] = [];
 
     filteredAttendance.forEach(record => {
+      const missedScans = getMissedScans(record);
       const recordData = [
         record.student.roll || 'N/A',
         record.student.name,
-        record.finalStatus.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        getFinalStatus(record).replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        missedScans?.props.children || '',
         getTime(record)
       ];
       tableRows.push(recordData);
@@ -108,7 +130,10 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
             {filteredAttendance.map((record) => (
               <TableRow key={record.student.uid}>
                 <TableCell className="font-medium">{record.student.roll || 'N/A'}</TableCell>
-                <TableCell>{record.student.name}</TableCell>
+                <TableCell>
+                    <div>{record.student.name}</div>
+                    {getMissedScans(record)}
+                </TableCell>
                 <TableCell>{getStatusBadge(record)}</TableCell>
                 <TableCell className="text-right">
                     {getTime(record)}
@@ -124,19 +149,27 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
 
 export function AdminDashboard() {
-  const { session, attendance, students, endSession, activateSecondQr } = useStore();
+  const { session, attendance, students, endSession, activateNextScan } = useStore();
   const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
+  
+  const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
+      const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
+      if (scansCompleted === 0) return 'absent';
+      if (scansCompleted < session.totalScans) return 'left_early';
+      if (record.scans.some(s => s.status === 'late')) return 'late';
+      return 'present';
+  };
   
   const { present, absent, leftEarly } = useMemo(() => {
     const counts = { present: 0, absent: 0, leftEarly: 0 };
     attendance.forEach(record => {
-      // Final status 'late' should be counted as 'present' for the top-level stats
-        if(record.finalStatus === 'present' || record.finalStatus === 'late') counts.present++;
-        else if (record.finalStatus === 'left_early') counts.leftEarly++;
-        else if (record.finalStatus === 'absent') counts.absent++;
+      const finalStatus = getFinalStatus(record);
+      if(finalStatus === 'present' || finalStatus === 'late') counts.present++;
+      else if (finalStatus === 'left_early') counts.leftEarly++;
+      else if (finalStatus === 'absent') counts.absent++;
     });
     return counts;
-  }, [attendance]);
+  }, [attendance, session.totalScans]);
   
   const totalStudents = students?.length || 0;
   const attendancePercentage = totalStudents > 0 ? (present / totalStudents) * 100 : 0;
@@ -210,7 +243,7 @@ export function AdminDashboard() {
             </Card>
         </div>
 
-        {session.status !== 'inactive' && session.status !== 'ended' && (
+        {session.status === 'active' && (
             <div className="space-y-2">
                 <Progress value={attendancePercentage} />
                 <p className="text-sm text-muted-foreground text-center">{present} of {totalStudents} students are fully present.</p>
@@ -228,15 +261,15 @@ export function AdminDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 space-y-6">
                   <QrCodeDisplay />
-                  {session.status === 'active_first' && (
+                  {session.currentScan < session.totalScans && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Second Scan</CardTitle>
-                            <CardDescription>When you are ready, activate the second scan to verify which students are still present.</CardDescription>
+                            <CardTitle>Next Scan</CardTitle>
+                            <CardDescription>When you are ready, activate the next scan to continue verifying attendance.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button onClick={activateSecondQr} className="w-full">
-                                <ScanLine className="mr-2 h-4 w-4" /> Activate Second Scan
+                            <Button onClick={activateNextScan} className="w-full">
+                                <ScanLine className="mr-2 h-4 w-4" /> Activate Scan {session.currentScan + 1}
                             </Button>
                         </CardContent>
                     </Card>
@@ -248,3 +281,6 @@ export function AdminDashboard() {
     </div>
   );
 }
+
+// Helper type
+type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';

@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -26,7 +27,11 @@
         "role": {
           "type": "string",
           "description": "Role of the user within the system (e.g., 'admin', 'viewer', 'disabled').",
-          "enum": ["admin", "viewer", "disabled"]
+          "enum": [
+            "admin",
+            "viewer",
+            "disabled"
+          ]
         }
       },
       "required": [
@@ -49,6 +54,18 @@
         "secondKey": {
           "type": "string",
           "description": "The unique key for the second scan."
+        },
+        "thirdKey": {
+          "type": "string",
+          "description": "The unique key for the third scan."
+        },
+        "totalScans": {
+          "type": "number",
+          "description": "The total number of scans for this session (e.g. 2, 3)."
+        },
+        "currentScan": {
+          "type": "number",
+          "description": "The current active scan number (1, 2, or 3)."
         },
         "adminUid": {
           "type": "string",
@@ -75,6 +92,10 @@
           "type": "number",
           "description": "The number of minutes after which a student is marked as late for the second scan."
         },
+        "thirdScanLateAfterMinutes": {
+          "type": "number",
+          "description": "The number of minutes after which a student is marked as late for the third scan."
+        },
         "subject": {
           "type": "string",
           "description": "The subject of the class session."
@@ -85,7 +106,43 @@
         "adminUid",
         "createdAt",
         "lat",
-        "lng"
+        "lng",
+        "totalScans",
+        "currentScan"
+      ]
+    },
+    "ScanData": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ScanData",
+      "type": "object",
+      "description": "Represents the status and data for a single scan within an attendance record.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "present",
+            "late",
+            "absent"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "minutesLate": {
+          "type": "number"
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "photoURL": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "minutesLate"
       ]
     },
     "AttendanceRecord": {
@@ -97,36 +154,11 @@
         "student": {
           "$ref": "#/entities/User"
         },
-        "scan1_status": {
-          "type": "string",
-          "enum": [
-            "present",
-            "late",
-            "absent"
-          ]
-        },
-        "scan1_timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "scan1_minutesLate": {
-            "type": "number"
-        },
-        "scan2_status": {
-          "type": "string",
-          "enum": [
-            "present",
-            "late",
-            "absent",
-            "n/a"
-          ]
-        },
-        "scan2_timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "scan2_minutesLate": {
-            "type": "number"
+        "scans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/entities/ScanData"
+          }
         },
         "finalStatus": {
           "type": "string",
@@ -137,18 +169,66 @@
             "left_early"
           ]
         },
-        "deviceId": {
-          "type": "string"
-        },
-        "photoURL": {
-            "type": "string"
+        "correctionRequest": {
+          "type": "object",
+          "properties": {
+            "requestedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "denied"
+              ]
+            }
+          }
         }
       },
       "required": [
         "student",
-        "scan1_status",
-        "scan2_status",
+        "scans",
         "finalStatus"
+      ]
+    },
+    "ChatMessage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ChatMessage",
+      "type": "object",
+      "description": "Represents a single message in a chat.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "senderUid": {
+          "type": "string"
+        },
+        "senderName": {
+          "type": "string"
+        },
+        "senderRole": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "viewer"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "text",
+        "senderUid",
+        "senderName",
+        "senderRole",
+        "timestamp"
       ]
     },
     "Settings": {
@@ -201,6 +281,12 @@
         "$ref": "#/entities/AttendanceRecord"
       },
       "description": "Stores individual attendance records for a specific historical session."
+    },
+    "/chats/{studentUid}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ChatMessage"
+      },
+      "description": "Stores chat messages for a specific student. Admins can access all chats."
     },
     "/settings/attendance": {
       "schema": {

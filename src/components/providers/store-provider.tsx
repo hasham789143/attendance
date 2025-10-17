@@ -6,33 +6,40 @@ import { useAuth, UserProfile } from './auth-provider';
 import { collection, query, where, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
-import { AttendanceSession } from '@/models/backend';
+import { AttendanceSession, ScanData } from '@/models/backend';
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
+
 
 // This represents the live attendance record in the component's state.
 // Timestamps are Date objects for easier manipulation.
 export type AttendanceRecord = {
   student: UserProfile;
-  scan1_status: 'present' | 'late' | 'absent';
-  scan1_timestamp: Date | null;
-  scan1_minutesLate: number;
-  scan2_status: 'present' | 'late' | 'absent' | 'n/a';
-  scan2_timestamp: Date | null;
-  scan2_minutesLate: number;
+  scans: ScanData[];
   finalStatus: AttendanceStatus;
+  correctionRequest?: {
+      requestedAt: string;
+      reason: string;
+      status: 'pending' | 'approved' | 'denied';
+  };
 };
 
 export type AttendanceMap = Map<string, AttendanceRecord>;
 
-type SessionStatus = 'inactive' | 'active_first' | 'active_second' | 'ended';
+type SessionStatus = 'inactive' | 'active' | 'ended';
 export type Session = {
   status: SessionStatus;
   qrCodeValue: string;
   readableCode: string;
   startTime: Date | null;
-  firstScanCutoff: Date | null;
-  secondScanCutoff: Date | null;
+  
+  currentScan: number;
+  totalScans: number;
+
+  lateAfterMinutes: number;
+  secondScanLateAfterMinutes?: number;
+  thirdScanLateAfterMinutes?: number;
+
   lat?: number;
   lng?: number;
 };
@@ -41,10 +48,11 @@ type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
   students: UserProfile[];
-  startSession: (lateAfterMinutes: number, subject: string) => void;
+  startSession: (lateAfterMinutes: number, subject: string, totalScans: number) => void;
   endSession: () => void;
   markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
-  activateSecondQr: () => void;
+  activateNextScan: () => void;
+  requestCorrection: (studentId: string, reason: string) => void;
 };
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -100,55 +108,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     qrCodeValue: '',
     readableCode: '',
     startTime: null,
-    firstScanCutoff: null,
-    secondScanCutoff: null,
+    currentScan: 0,
+    totalScans: 0,
+    lateAfterMinutes: 0,
   });
 
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
-  const [devicesInUse, setDevicesInUse] = useState<Set<string>>(new Set());
+  const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
 
   // Effect to sync local session state from the main session document
   useEffect(() => {
     if (dbSession) {
       const startTime = dbSession.createdAt ? new Date(dbSession.createdAt) : new Date();
-      const firstScanCutoff = dbSession.lateAfterMinutes ? new Date(startTime.getTime() + dbSession.lateAfterMinutes * 60 * 1000) : null;
       
-      const { readableCode } = parseQrCodeValue(dbSession.key);
-      
-      setSession(prevSession => {
-        const currentStatus = prevSession.status;
-        let newStatus = (currentStatus === 'active_first' || currentStatus === 'active_second') ? currentStatus : 'active_first';
+      let qrCodeValue = '';
+      let readableCode = '';
 
-        let qrCodeValue = dbSession.key;
-        let newReadableCode = readableCode;
-        
-        // If we are activating the second scan, use the new key from the DB if available
-        if (newStatus === 'active_second' && dbSession.secondKey) {
-            const { readableCode: secondReadableCode } = parseQrCodeValue(dbSession.secondKey);
-            qrCodeValue = dbSession.secondKey;
-            newReadableCode = secondReadableCode;
-        }
+      switch(dbSession.currentScan) {
+        case 1:
+            qrCodeValue = dbSession.key;
+            break;
+        case 2:
+            qrCodeValue = dbSession.secondKey || '';
+            break;
+        case 3:
+            qrCodeValue = dbSession.thirdKey || '';
+            break;
+      }
+       if(qrCodeValue) {
+          readableCode = parseQrCodeValue(qrCodeValue).readableCode;
+       }
 
 
-        return { 
-          ...prevSession,
-          status: newStatus,
-          qrCodeValue: qrCodeValue,
-          readableCode: newReadableCode,
+      setSession({ 
+          status: 'active',
+          qrCodeValue,
+          readableCode,
           startTime,
-          firstScanCutoff,
           lat: dbSession.lat,
           lng: dbSession.lng,
-        };
+          currentScan: dbSession.currentScan,
+          totalScans: dbSession.totalScans,
+          lateAfterMinutes: dbSession.lateAfterMinutes,
+          secondScanLateAfterMinutes: dbSession.secondScanLateAfterMinutes,
+          thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes,
       });
-    } else if (!dbSession && (session.status === 'active_first' || session.status === 'active_second')) {
+    } else if (session.status === 'active') {
         setSession({
           status: 'ended', 
           qrCodeValue: '',
           readableCode: '',
           startTime: null,
-          firstScanCutoff: null,
-          secondScanCutoff: null
+          currentScan: 0,
+          totalScans: 0,
+          lateAfterMinutes: 0,
         });
         setAttendance(new Map());
     }
@@ -158,36 +171,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (liveRecords && students.length > 0) {
         const newAttendance = new Map<string, AttendanceRecord>();
-        const newDevices = new Set<string>();
+        const newDevices = new Map<number, Set<string>>();
+        
+        for (let i = 1; i <= (session.totalScans || 3); i++) {
+            newDevices.set(i, new Set());
+        }
 
-        // Ensure every student has a record, even if it's just the default
         students.forEach(student => {
             const liveRecordData = liveRecords.find(r => r.id === student.uid);
             if (liveRecordData) {
                  const hydratedRecord: AttendanceRecord = {
                     student: liveRecordData.student,
-                    scan1_status: liveRecordData.scan1_status,
-                    scan1_timestamp: liveRecordData.scan1_timestamp ? new Date(liveRecordData.scan1_timestamp.seconds * 1000) : null,
-                    scan1_minutesLate: liveRecordData.scan1_minutesLate || 0,
-                    scan2_status: liveRecordData.scan2_status,
-                    scan2_timestamp: liveRecordData.scan2_timestamp ? new Date(liveRecordData.scan2_timestamp.seconds * 1000) : null,
-                    scan2_minutesLate: liveRecordData.scan2_minutesLate || 0,
+                    scans: liveRecordData.scans.map((scan: any) => ({
+                        ...scan,
+                        timestamp: scan.timestamp ? new Date(scan.timestamp.seconds * 1000) : null
+                    })),
                     finalStatus: liveRecordData.finalStatus,
+                    correctionRequest: liveRecordData.correctionRequest
                 };
                 newAttendance.set(student.uid, hydratedRecord);
 
-                if(liveRecordData.scan1_status !== 'absent' && liveRecordData.deviceId) {
-                    newDevices.add(liveRecordData.deviceId);
-                }
+                hydratedRecord.scans.forEach((scan, index) => {
+                    if (scan.status !== 'absent' && scan.deviceId) {
+                        newDevices.get(index + 1)?.add(scan.deviceId);
+                    }
+                });
+
             } else {
                  const defaultRecord: AttendanceRecord = {
                     student,
-                    scan1_status: 'absent',
-                    scan1_timestamp: null,
-                    scan1_minutesLate: 0,
-                    scan2_status: 'n/a',
-                    scan2_timestamp: null,
-                    scan2_minutesLate: 0,
+                    scans: Array.from({ length: session.totalScans || 2 }, () => ({
+                        status: 'absent',
+                        timestamp: null,
+                        minutesLate: 0,
+                    })),
                     finalStatus: 'absent'
                 };
                 newAttendance.set(student.uid, defaultRecord);
@@ -196,7 +213,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setAttendance(newAttendance);
         setDevicesInUse(newDevices);
     }
-  }, [liveRecords, students]);
+  }, [liveRecords, students, session.totalScans]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -210,7 +227,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { prefix: parts[0] || '', readableCode: parts[1] || '', timestamp: parts[2] || '' };
   };
 
-  const startSession = useCallback(async (lateAfterMinutes: number, subject: string) => {
+  const startSession = useCallback(async (lateAfterMinutes: number, subject: string, totalScans: number) => {
     if (!navigator.geolocation) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
@@ -222,7 +239,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     navigator.geolocation.getCurrentPosition(async (position) => {
       const { latitude, longitude } = position.coords;
-      const { readableCode, qrCodeValue } = generateNewCode('first');
+      const { qrCodeValue } = generateNewCode('scan1');
       
       const sessionData: Partial<AttendanceSession> = {
         key: qrCodeValue,
@@ -230,8 +247,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         createdAt: new Date().toISOString(),
         lat: latitude,
         lng: longitude,
-        lateAfterMinutes: lateAfterMinutes,
         subject: subject,
+        totalScans: totalScans,
+        currentScan: 1,
+        lateAfterMinutes: lateAfterMinutes,
+        // Set all scan policies to the same for simplicity
+        secondScanLateAfterMinutes: lateAfterMinutes,
+        thirdScanLateAfterMinutes: totalScans === 3 ? lateAfterMinutes : undefined,
       }
       
       const batch = writeBatch(firestore);
@@ -247,12 +269,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 role: student.role,
                 roll: student.roll,
               }, 
-              scan1_status: 'absent',
-              scan1_timestamp: null,
-              scan1_minutesLate: 0,
-              scan2_status: 'n/a',
-              scan2_timestamp: null,
-              scan2_minutesLate: 0,
+              scans: Array.from({ length: totalScans }, () => ({
+                  status: 'absent',
+                  timestamp: null,
+                  minutesLate: 0,
+              })),
               finalStatus: 'absent',
           };
           batch.set(recordRef, initialRecord);
@@ -260,7 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       await batch.commit();
       
-      toast({ title: 'Session Started', description: `Students can mark attendance. Late after ${lateAfterMinutes} minutes.` });
+      toast({ title: 'Session Started', description: `Students can now perform the first scan.` });
 
     }, (error) => {
         toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
@@ -275,39 +296,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         
         const archiveSessionRef = doc(collection(firestore, "sessions"));
         
-        const sessionToArchive: Partial<AttendanceSession> = {
-          key: dbSession.key,
-          adminUid: dbSession.adminUid,
-          createdAt: dbSession.createdAt,
-          lat: dbSession.lat,
-          lng: dbSession.lng,
-          lateAfterMinutes: dbSession.lateAfterMinutes,
-          subject: dbSession.subject,
-          secondKey: dbSession.secondKey || null,
-          secondScanLateAfterMinutes: dbSession.secondScanLateAfterMinutes || null
-        };
-        batch.set(archiveSessionRef, sessionToArchive);
-        
+        // Finalize attendance before archiving
         const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
-
         recordsSnapshot.forEach(recordDoc => {
+            const recordData = recordDoc.data();
+            const scansCompleted = recordData.scans.filter((s: ScanData) => s.status !== 'absent').length;
+            let finalStatus: AttendanceStatus = 'absent';
+            
+            if (scansCompleted === recordData.scans.length) {
+                const isLate = recordData.scans.some((s: ScanData) => s.status === 'late');
+                finalStatus = isLate ? 'late' : 'present';
+            } else if (scansCompleted > 0) {
+                finalStatus = 'left_early';
+            }
+
+            batch.update(recordDoc.ref, { finalStatus });
+        });
+        await batch.commit();
+
+        // Now archive with the finalized statuses
+        const archiveBatch = writeBatch(firestore);
+
+        const sessionToArchive: Partial<AttendanceSession> = {
+          ...dbSession,
+          key: dbSession.key,
+          secondKey: dbSession.secondKey || null,
+          thirdKey: dbSession.thirdKey || null,
+        };
+        archiveBatch.set(archiveSessionRef, sessionToArchive);
+        
+        const finalRecordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
+        finalRecordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
             const dataToArchive = {
                 ...recordData,
-                scan1_timestamp: recordData.scan1_timestamp ? recordData.scan1_timestamp.toDate().toISOString() : null,
-                scan2_timestamp: recordData.scan2_timestamp ? recordData.scan2_timestamp.toDate().toISOString() : null
+                scans: recordData.scans.map((scan: any) => ({
+                    ...scan,
+                    timestamp: scan.timestamp ? scan.timestamp.toDate().toISOString() : null,
+                })),
+                correctionRequest: recordData.correctionRequest || null,
             };
-            batch.set(archiveRecordRef, dataToArchive);
-        });
-        
-        recordsSnapshot.forEach(recordDoc => {
-            batch.delete(doc(firestore, 'sessions', 'current', 'records', recordDoc.id));
+            archiveBatch.set(archiveRecordRef, dataToArchive);
+            archiveBatch.delete(recordDoc.ref); // Delete live record
         });
 
-        batch.delete(sessionDocRef);
+        archiveBatch.delete(sessionDocRef); // Delete live session
 
-        await batch.commit();
+        await archiveBatch.commit();
 
         toast({ title: 'Session Ended', description: 'Attendance has been archived.' });
 
@@ -319,7 +355,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 
 const markAttendance = useCallback(async (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => {
-    if (!firestore || !session.startTime || (session.status !== 'active_first' && session.status !== 'active_second')) {
+    if (!firestore || session.status !== 'active' || !session.startTime) {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
         return;
     }
@@ -331,6 +367,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         return;
     }
     const studentRecord = studentRecordSnap.data();
+    const currentScanIndex = session.currentScan - 1;
 
     const { readableCode: expectedCode, prefix: codePrefix } = parseQrCodeValue(session.qrCodeValue);
     const { readableCode: receivedCode } = parseQrCodeValue(code);
@@ -339,114 +376,112 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
         return;
     }
+
+    if (codePrefix !== `scan${session.currentScan}`) {
+        toast({ variant: 'destructive', title: 'Wrong Session QR', description: `This QR is for Scan ${codePrefix.replace('scan', '')}, but Scan ${session.currentScan} is active.` });
+        return;
+    }
     
     const distance = getDistance({ lat: session.lat!, lng: session.lng! }, location);
     if (distance > 100) { // 100 meters
         toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
         return;
     }
+    
+    // Check if device has already been used for this scan
+    if (devicesInUse.get(session.currentScan)?.has(deviceId)) {
+        toast({ variant: 'destructive', title: 'Device Already Used', description: 'This device has already marked attendance for this scan.' });
+        return;
+    }
+
+    if (studentRecord.scans[currentScanIndex].status !== 'absent') {
+        toast({ title: 'Already Scanned', description: `You have already completed Scan ${session.currentScan}.` });
+        return;
+    }
+
+    // For scans > 1, check if previous was completed
+    if(session.currentScan > 1 && studentRecord.scans[currentScanIndex - 1].status === 'absent') {
+        toast({ variant: 'destructive', title: `Scan ${session.currentScan -1} Missed`, description: `You must complete the previous scan before this one.` });
+        return;
+    }
+
 
     const now = new Date();
-
-    // ---- FIRST SCAN LOGIC ----
-    if (session.status === 'active_first' && codePrefix === 'first') {
-        if (studentRecord.scan1_status !== 'absent') {
-            toast({ title: 'Already Scanned', description: 'You have already marked your attendance for this scan.' });
-            return;
+    let status: 'present' | 'late' = 'present';
+    let minutesLate = 0;
+    
+    const latePolicies = [session.lateAfterMinutes, session.secondScanLateAfterMinutes, session.thirdScanLateAfterMinutes];
+    const latePolicyForCurrentScan = latePolicies[currentScanIndex];
+    
+    if (latePolicyForCurrentScan !== undefined && session.startTime) {
+        const cutoffTime = new Date(session.startTime.getTime() + latePolicyForCurrentScan * 60000);
+        if (now > cutoffTime) {
+            status = 'late';
+            minutesLate = Math.round((now.getTime() - cutoffTime.getTime()) / 60000);
         }
-        if (devicesInUse.has(deviceId)) {
-            toast({ variant: 'destructive', title: 'Device Already Used', description: 'This device has already marked attendance for another student.' });
-            return;
-        }
-        
-        let scan1_status: 'present' | 'late' = 'present';
-        let scan1_minutesLate = 0;
-
-        if (session.firstScanCutoff && now > session.firstScanCutoff) {
-            scan1_status = 'late';
-            scan1_minutesLate = Math.round((now.getTime() - session.firstScanCutoff.getTime()) / 60000);
-        }
-
-        const updates = {
-            scan1_status,
-            scan1_minutesLate,
-            scan1_timestamp: now,
-            finalStatus: 'left_early', // Default to left_early until second scan
-            deviceId: deviceId,
-        };
-
-        updateDocumentNonBlocking(studentDocRef, updates);
-        toast({ title: 'Scan 1 Completed!', description: `You are marked as ${scan1_status.toUpperCase()}${scan1_minutesLate > 0 ? ` (${scan1_minutesLate} min late)` : ''}. Waiting for 2nd scan.` });
-        return;
     }
-
-    // ---- SECOND SCAN LOGIC ----
-    if (session.status === 'active_second' && codePrefix === 'second') {
-        if (studentRecord.scan1_status === 'absent') {
-            toast({ variant: 'destructive', title: 'First Scan Missed', description: 'You cannot complete the second scan without the first.' });
-            return;
-        }
-        if (studentRecord.scan2_status !== 'n/a' && studentRecord.scan2_status !== 'absent') {
-            toast({ title: 'Already Scanned', description: 'You have already completed the second scan.' });
-            return;
-        }
-
-        let scan2_status: 'present' | 'late' = 'present';
-        let scan2_minutesLate = 0;
-
-        if (session.secondScanCutoff && now > session.secondScanCutoff) {
-            scan2_status = 'late';
-            scan2_minutesLate = Math.round((now.getTime() - session.secondScanCutoff.getTime()) / 60000);
-        }
-        
-        const finalStatus = studentRecord.scan1_status === 'late' || scan2_status === 'late' ? 'late' : 'present';
-
-        const updates = {
-            scan2_status,
-            scan2_minutesLate,
-            scan2_timestamp: now,
-            finalStatus: finalStatus,
-        };
-
-        updateDocumentNonBlocking(studentDocRef, updates);
-        toast({ title: 'Attendance Marked!', description: 'Verification complete. You are fully marked as present.' });
-        return;
-    }
-
-    toast({ variant: 'destructive', title: 'Invalid Scan', description: 'This QR code is for a different scanning round.' });
+    
+    const updatedScans = [...studentRecord.scans];
+    updatedScans[currentScanIndex] = {
+        status,
+        minutesLate,
+        timestamp: now.toISOString(),
+        deviceId: deviceId,
+    };
+    
+    updateDocumentNonBlocking(studentDocRef, { scans: updatedScans });
+    toast({ title: `Scan ${session.currentScan} Completed!`, description: `You are marked as ${status.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}.` });
 
 }, [session, firestore, devicesInUse, toast]);
   
   
-  const activateSecondQr = useCallback(async () => {
-    if(!firestore || !sessionDocRef) return;
+  const activateNextScan = useCallback(async () => {
+    if(!firestore || !sessionDocRef || !dbSession) return;
     
-    try {
-        const { readableCode, qrCodeValue } = generateNewCode('second');
+    const nextScanNumber = dbSession.currentScan + 1;
+    if (nextScanNumber > dbSession.totalScans) {
+        toast({ variant: 'destructive', title: 'No More Scans', description: 'This was the final scan of the session.' });
+        return;
+    }
 
-        const batch = writeBatch(firestore);
+    try {
+        const { qrCodeValue } = generateNewCode(`scan${nextScanNumber}`);
         
-        // Update the session doc with the second key
-        batch.update(sessionDocRef, { secondKey: qrCodeValue });
+        let keyFieldToUpdate: 'secondKey' | 'thirdKey';
+        if (nextScanNumber === 2) keyFieldToUpdate = 'secondKey';
+        else if (nextScanNumber === 3) keyFieldToUpdate = 'thirdKey';
+        else return;
         
-        // Update all student records to expect the second scan
-        attendance.forEach((record, studentId) => {
-            if (record.scan1_status !== 'absent') {
-                const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
-                batch.update(studentDocRef, { scan2_status: 'absent' });
-            }
+        await updateDocumentNonBlocking(sessionDocRef, { 
+            currentScan: nextScanNumber,
+            [keyFieldToUpdate]: qrCodeValue
         });
         
-        await batch.commit();
-
-        setSession(prev => ({ ...prev, status: 'active_second', readableCode, qrCodeValue }));
-        toast({ title: 'Second Scan Activated', description: 'Students must scan again to be marked fully present.' });
+        toast({ title: `Scan ${nextScanNumber} Activated`, description: 'Students must scan again to continue.' });
 
     } catch (error) {
-        toast({ variant: 'destructive', title: 'Activation Failed', description: 'Could not update records for the second scan.' });
-        console.error("Failed to activate second scan:", error);
+        toast({ variant: 'destructive', title: 'Activation Failed', description: 'Could not activate the next scan.' });
+        console.error("Failed to activate next scan:", error);
     }
-  }, [firestore, attendance, toast, sessionDocRef]);
+  }, [firestore, dbSession, toast, sessionDocRef]);
+
+  const requestCorrection = useCallback(async(studentId: string, reason: string) => {
+    if (!firestore || session.status !== 'active') {
+        toast({ variant: 'destructive', title: 'Session inactive', description: 'Cannot submit request for an inactive session.' });
+        return;
+    }
+    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+    
+    const correctionRequest = {
+        requestedAt: new Date().toISOString(),
+        reason: reason,
+        status: 'pending',
+    };
+
+    updateDocumentNonBlocking(studentDocRef, { correctionRequest });
+    toast({ title: 'Request Submitted', description: 'Your attendance correction request has been sent to the admin.' });
+
+  }, [firestore, session.status, toast]);
 
 
   const value = useMemo(() => ({
@@ -456,8 +491,9 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
     startSession,
     endSession,
     markAttendance,
-    activateSecondQr,
-  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateSecondQr]);
+    activateNextScan,
+    requestCorrection,
+  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection]);
 
 
   return (

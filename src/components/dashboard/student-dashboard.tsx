@@ -5,22 +5,63 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle, Send } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import { getDeviceId } from '@/lib/utils';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Textarea } from '../ui/textarea';
+import { Label } from '../ui/label';
+
+function CorrectionRequestDialog({ onSend, onCancel }: { onSend: (reason: string) => void, onCancel: () => void }) {
+    const [reason, setReason] = useState('');
+    
+    const handleSend = () => {
+        if (reason.trim()) {
+            onSend(reason);
+        }
+    }
+    
+    return (
+        <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onCancel()}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Request Attendance Correction</DialogTitle>
+                    <DialogDescription>
+                        Explain to the administrator why you missed the first scan.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="reason">Reason for missing scan:</Label>
+                    <Textarea 
+                        id="reason"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="e.g., I had a technical issue with my device."
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onCancel}>Cancel</Button>
+                    <Button onClick={handleSend} disabled={!reason.trim()}>
+                        <Send className="mr-2 h-4 w-4"/> Send Request
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
 
 export function StudentDashboard() {
   const { userProfile } = useAuth();
-  const { session, attendance, markAttendance } = useStore();
+  const { session, attendance, markAttendance, requestCorrection } = useStore();
   const [isLoading, setIsLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannedData, setScannedData] = useState<string | null>(null);
   const { toast } = useToast();
   
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
   
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
@@ -30,30 +71,20 @@ export function StudentDashboard() {
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    const getCameraPermission = async () => {
-      if (showScanner) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setHasCameraPermission(true);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        } catch (error) {
-          console.error('Error accessing camera:', error);
-          setHasCameraPermission(false);
-          setShowScanner(false); // Hide scanner if permission is denied
-        }
-      }
-    };
-    getCameraPermission();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [showScanner]);
+    if (showScanner && hasCameraPermission === null) { // only ask if we haven't asked before
+        const getCameraPermission = async () => {
+            try {
+              await navigator.mediaDevices.getUserMedia({ video: true });
+              setHasCameraPermission(true);
+            } catch (error) {
+              console.error('Error accessing camera:', error);
+              setHasCameraPermission(false);
+              setShowScanner(false); // Hide scanner if permission is denied
+            }
+        };
+        getCameraPermission();
+    }
+  }, [showScanner, hasCameraPermission]);
 
   const resetScanner = () => {
     setShowScanner(false);
@@ -116,6 +147,12 @@ export function StudentDashboard() {
     }
   }
 
+  const handleCorrectionRequest = (reason: string) => {
+      if (userProfile) {
+          requestCorrection(userProfile.uid, reason);
+      }
+      setShowCorrectionDialog(false);
+  }
 
   const getStatusContent = (record?: AttendanceRecord) => {
     if (session.status === 'inactive' || session.status === 'ended') {
@@ -129,66 +166,54 @@ export function StudentDashboard() {
     if (!record) {
        return (
         <div className="text-center">
-          <p className="text-muted-foreground">Loading attendance status...</p>
+          <Loader2 className="h-6 w-6 animate-spin mx-auto"/>
+          <p className="text-muted-foreground mt-2">Loading attendance status...</p>
         </div>
       );
     }
 
-    const { finalStatus, scan1_status, scan1_minutesLate, scan2_minutesLate } = record;
-    const totalMinutesLate = (scan1_minutesLate || 0) + (scan2_minutesLate || 0);
-
-    
-    if (finalStatus === 'present' || finalStatus === 'late') {
-        const statusBadge = finalStatus === 'present' 
-            ? <Badge className="bg-green-600">Present</Badge>
-            : <Badge className="bg-yellow-500">Late ({totalMinutesLate}m)</Badge>;
-      return (
-        <div className="text-center">
-          <div className="text-lg">You are marked {statusBadge}</div>
-          <p className="text-muted-foreground">Both scans completed. Well done!</p>
-        </div>
-      );
+    if (record.correctionRequest?.status === 'pending') {
+        return <div className="text-center text-lg text-yellow-600">Correction request is pending admin approval.</div>
     }
-    
-    if (finalStatus === 'left_early') {
-      const scan1Badge = scan1_status === 'late' 
-          ? <Badge className="bg-yellow-500">Late ({scan1_minutesLate}m)</Badge>
-          : <Badge className="bg-green-500">Completed</Badge>;
-      
-      const waitingMessage = session.status === 'active_first' 
-        ? "Waiting for the second verification scan to be activated."
-        : "The second scan is now active. Please scan again.";
 
-      return (
-        <div className="text-center">
-          <div className="text-lg">Scan 1: {scan1Badge}</div>
-          <p className="text-muted-foreground">{waitingMessage}</p>
-        </div>
-      );
+    const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
+
+    if (scansCompleted === session.totalScans) {
+        const isLate = record.scans.some(s => s.status === 'late');
+        const statusBadge = isLate ? <Badge className="bg-yellow-500">Late</Badge> : <Badge className="bg-green-600">Present</Badge>;
+        return (
+            <div className="text-center">
+                <div className="text-lg">Final Status: {statusBadge}</div>
+                <p className="text-muted-foreground">All scans completed. Well done!</p>
+            </div>
+        );
+    }
+
+    if (scansCompleted > 0) {
+        return (
+            <div className="text-center">
+              <div className="text-lg">Scan {scansCompleted + 1} of {session.totalScans} is next.</div>
+              <p className="text-muted-foreground">Please scan the next QR code when it is presented.</p>
+            </div>
+        );
     }
     
     // Default to absent
     return (
-      <div className="text-center">
+      <div className="text-center space-y-4">
         <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
         <p className="text-muted-foreground">Scan the QR code to mark your attendance.</p>
+        {record.scans[0].status === 'absent' && session.currentScan > 1 && (
+            <Button variant="secondary" onClick={() => setShowCorrectionDialog(true)}>Request Correction</Button>
+        )}
       </div>
     );
   };
 
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
-
-    // Show for first scan if not yet scanned
-    if (session.status === 'active_first' && myRecord.scan1_status === 'absent') {
-      return true;
-    }
-    // Show for second scan if first is done but second is not
-    if (session.status === 'active_second' && myRecord.scan1_status !== 'absent' && (myRecord.scan2_status === 'absent' || myRecord.scan2_status === 'n/a')) {
-      return true;
-    }
-    
-    return false;
+    const scansCompleted = myRecord.scans.filter(s => s.status !== 'absent').length;
+    return session.status === 'active' && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
   }
 
   return (
@@ -207,13 +232,20 @@ export function StudentDashboard() {
           </Alert>
       )}
 
+      {showCorrectionDialog && (
+          <CorrectionRequestDialog 
+              onCancel={() => setShowCorrectionDialog(false)}
+              onSend={handleCorrectionRequest}
+          />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Current Session Status</CardTitle>
           <CardDescription>
-            {session.status === 'inactive' || session.status === 'ended'
+            {session.status !== 'active'
               ? 'There is no active attendance session.'
-              : `An attendance session is active. Scan round: ${session.status === 'active_first' ? '1' : '2'}`}
+              : `Session is active. Current scan: ${session.currentScan} of ${session.totalScans}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -226,8 +258,6 @@ export function StudentDashboard() {
               <>
                 {showScanner ? (
                   <div className="w-full max-w-sm mx-auto text-center">
-                      <video ref={videoRef} className="w-full aspect-video rounded-md hidden" autoPlay muted />
-
                       {isLoading && (
                           <div className="flex flex-col items-center justify-center h-48">
                               <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -272,7 +302,7 @@ export function StudentDashboard() {
                 ) : (
                   <Button onClick={() => setShowScanner(true)} size="lg" disabled={isLoading}>
                       <QrCode className="mr-2 h-5 w-5" />
-                      Scan QR Code
+                      Scan QR Code for Scan #{session.currentScan}
                   </Button>
                 )}
               </>

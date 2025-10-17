@@ -7,14 +7,14 @@ import Image from 'next/image';
 export function QrCodeDisplay() {
   const { session } = useStore();
 
-  if (session.status !== 'active_first' && session.status !== 'active_second') {
+  if (session.status !== 'active') {
     return null;
   }
 
   return (
     <Card className="flex flex-col items-center justify-center p-6 bg-card">
       <CardHeader className="text-center p-2">
-        <CardTitle>{session.status === 'active_first' ? 'First Attendance Scan' : 'Second Verification Scan'}</CardTitle>
+        <CardTitle>Scan {session.currentScan} of {session.totalScans}</CardTitle>
         <CardDescription>Scan the QR code or enter the code below.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-4 p-2">

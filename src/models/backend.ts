@@ -21,37 +21,46 @@ export interface User {
 export interface AttendanceSession {
     key: string; // The unique key for the first scan.
     secondKey?: string; // The unique key for the second scan.
+    thirdKey?: string; // The unique key for the third scan
+    totalScans: number; // The total number of scans for this session (e.g. 2, 3)
+    currentScan: number; // The current active scan number (1, 2, or 3)
     adminUid: string; // UID of the admin who created the session.
     createdAt: string; // ISO 8601 timestamp.
     lat: number;
     lng: number;
-    lateAfterMinutes?: number; // For first scan
+    lateAfterMinutes: number; // For first scan
     secondScanLateAfterMinutes?: number; // For second scan
+    thirdScanLateAfterMinutes?: number; // For third scan
     subject?: string; // The subject of the class session
 }
 
+/**
+ * Represents the status and data for a single scan within an attendance record.
+ */
+export interface ScanData {
+    /** @enum {string} */
+    status: 'present' | 'late' | 'absent';
+    timestamp: string | null;
+    minutesLate: number;
+    deviceId?: string;
+    photoURL?: string;
+}
 
 /**
  * Represents a single attendance record for a user in a specific session.
  */
 export interface AttendanceRecord {
     student: User;
+    scans: ScanData[]; // An array holding the data for each scan.
     
     /** @enum {string} */
-    scan1_status: 'present' | 'late' | 'absent';
-    scan1_timestamp: string | null;
-    scan1_minutesLate: number;
-
-    /** @enum {string} */
-    scan2_status: 'present' | 'late' | 'absent' | 'n/a';
-    scan2_timestamp: string | null;
-    scan2_minutesLate: number;
-
-    /** @enum {string} */
     finalStatus: 'present' | 'late' | 'absent' | 'left_early';
-
-    deviceId?: string; // Unique identifier of the device used.
-    photoURL?: string;
+    
+    correctionRequest?: {
+        requestedAt: string;
+        reason: string;
+        status: 'pending' | 'approved' | 'denied';
+    };
 }
 
 /**
