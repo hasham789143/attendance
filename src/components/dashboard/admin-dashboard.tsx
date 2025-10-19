@@ -1,3 +1,4 @@
+
 'use client';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
 import { Button } from '@/components/ui/button';
@@ -64,14 +65,22 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   };
   
   const getMissedScans = (record: AttendanceRecord) => {
+    if (!session || session.totalScans < 2) return null;
+
     const missed: number[] = [];
-    record.scans.forEach((scan, index) => {
-        const hasPreviousScan = index > 0 ? record.scans[index-1].status !== 'absent' : true;
-        if(scan.status === 'absent' && record.scans[0].status !== 'absent' && hasPreviousScan) {
-            missed.push(index + 1);
+    // Only check for missed scans if at least one scan has been completed
+    const hasAnyScan = record.scans.some(s => s.status !== 'absent');
+    
+    if (hasAnyScan) {
+        for (let i = 0; i < session.totalScans; i++) {
+            if (record.scans[i]?.status === 'absent') {
+                missed.push(i + 1);
+            }
         }
-    });
-    if (missed.length > 0) {
+    }
+    
+    // Don't show "Missed" if all scans were missed (that's just "Absent")
+    if (missed.length > 0 && missed.length < session.totalScans) {
         return <span className="text-xs text-destructive">{t('dashboard.missedScans')}: {missed.map(m => getScanLabel(m, true, t)).join(', ')}</span>
     }
     return null;

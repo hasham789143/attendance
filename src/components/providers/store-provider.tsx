@@ -409,12 +409,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
         return;
     }
 
-    if(session.currentScan > 1 && studentRecord.scans[currentScanIndex - 1].status === 'absent') {
-        toast({ variant: 'destructive', title: `Scan ${session.currentScan -1} Missed`, description: `You must complete the previous scan before this one.` });
-        return;
-    }
-
-
     const now = new Date();
     let status: 'present' | 'late' = 'present';
     let minutesLate = 0;
