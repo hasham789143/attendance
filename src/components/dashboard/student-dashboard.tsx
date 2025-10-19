@@ -9,7 +9,7 @@ import { Loader2, QrCode, CheckCircle, Send, ShieldAlert } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
-import { getDeviceId, getScanLabel } from '@/lib/utils';
+import { getDeviceId, getScanLabel, getDistance } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
@@ -64,6 +64,8 @@ export function StudentDashboard() {
   const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
   
   const [isClient, setIsClient] = useState(false);
+  const [isInRange, setIsInRange] = useState<boolean | null>(null);
+
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -71,7 +73,7 @@ export function StudentDashboard() {
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
   useEffect(() => {
-    if (showScanner && hasCameraPermission === null) { // only ask if we haven't asked before
+    if (showScanner && hasCameraPermission === null) { 
         const getCameraPermission = async () => {
             try {
               await navigator.mediaDevices.getUserMedia({ video: true });
@@ -79,39 +81,57 @@ export function StudentDashboard() {
             } catch (error) {
               console.error('Error accessing camera:', error);
               setHasCameraPermission(false);
-              setShowScanner(false); // Hide scanner if permission is denied
+              setShowScanner(false);
             }
         };
         getCameraPermission();
     }
   }, [showScanner, hasCameraPermission]);
+  
+   useEffect(() => {
+    if (showScanner) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                if(session.lat && session.lng && session.radius) {
+                    const distance = getDistance({ lat: session.lat, lng: session.lng }, { lat: latitude, lng: longitude });
+                    setIsInRange(distance <= session.radius);
+                }
+            },
+            (error) => {
+                toast({
+                    variant: 'destructive',
+                    title: 'Location Error',
+                    description: `Could not get location: ${error.message}. Please enable location services.`,
+                });
+                setIsInRange(false);
+            }
+        );
+    }
+  }, [showScanner, session.lat, session.lng, session.radius, toast]);
+
 
   const resetScanner = () => {
     setShowScanner(false);
     setScannedData(null);
     setIsLoading(false);
+    setIsInRange(null);
   }
 
   const processScan = (result: string | null) => {
     if (result && userProfile) {
+      if (!isInRange) {
+        toast({
+            variant: 'destructive',
+            title: 'Out of Range',
+            description: 'You are not in the allowed area to mark attendance.',
+        });
+        return;
+      }
       setIsLoading(true);
       const deviceId = getDeviceId();
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          markAttendance(userProfile.uid, result, { lat: latitude, lng: longitude }, deviceId);
-          resetScanner();
-        },
-        (error) => {
-          toast({
-            variant: 'destructive',
-            title: 'Location Error',
-            description: `Could not get location: ${error.message}. Please enable location services.`,
-          });
-          resetScanner();
-        }
-      );
+      markAttendance(userProfile.uid, result, deviceId);
+      resetScanner();
     } else {
         toast({ variant: 'destructive', title: 'Scan Error', description: 'No QR code data was found.' });
         resetScanner();
@@ -227,6 +247,7 @@ export function StudentDashboard() {
 
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
+    if(myRecord.correctionRequest?.status === 'pending' || myRecord.correctionRequest?.status === 'denied') return false;
     const scansCompleted = myRecord.scans.filter(s => s.status !== 'absent').length;
     return session.status === 'active' && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
   }
@@ -289,18 +310,25 @@ export function StudentDashboard() {
                       )}
                       
                       {!isLoading && !scannedData && hasCameraPermission && (
-                        <Scanner
-                            onScan={handleScanResult}
-                            onError={handleError}
-                            components={{
-                              audio: false,
-                              finder: true,
-                            }}
-                            options={{
-                              delayBetweenScanAttempts: 500,
-                              delayBetweenScanSuccess: 1000,
-                            }}
-                        />
+                        <>
+                          <div className="mb-2">
+                                {isInRange === null && <p className="text-sm text-muted-foreground">Checking location...</p>}
+                                {isInRange === true && <p className="text-sm text-green-600 font-semibold">You are in range and can mark attendance.</p>}
+                                {isInRange === false && <p className="text-sm text-destructive font-semibold">You are out of range. Please move closer.</p>}
+                          </div>
+                          <Scanner
+                              onScan={handleScanResult}
+                              onError={handleError}
+                              components={{
+                                audio: false,
+                                finder: true,
+                              }}
+                              options={{
+                                delayBetweenScanAttempts: 500,
+                                delayBetweenScanSuccess: 1000,
+                              }}
+                          />
+                        </>
                       )}
 
                       <div className="flex w-full gap-2 mt-4">
@@ -308,7 +336,7 @@ export function StudentDashboard() {
                             Cancel
                         </Button>
                          {scannedData && !isLoading && (
-                            <Button onClick={() => processScan(scannedData)} className="w-full">
+                            <Button onClick={() => processScan(scannedData)} className="w-full" disabled={!isInRange}>
                                 Done
                             </Button>
                         )}

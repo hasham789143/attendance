@@ -5,3 +5,4 @@ config();
 import '@/ai/flows/dynamic-qr-display.flow.ts';
 import '@/ai/flows/absence-reason-analysis.flow.ts';
 import '@/ai/flows/dynamic-qr-optimization.flow.ts';
+import '@/ai/flows/text-translation.flow.ts';

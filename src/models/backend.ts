@@ -71,3 +71,15 @@ export interface Settings {
     isSelfieRequired: boolean;
     isRegistrationOpen: boolean;
 }
+
+/**
+ * Represents a text translation request and result.
+ */
+export interface Translate {
+    sourceText: string;
+    /** @enum {string} */
+    sourceLanguage: 'English' | 'Chinese';
+    /** @enum {string} */
+    targetLanguage: 'English' | 'Chinese';
+    translatedText?: string;
+}

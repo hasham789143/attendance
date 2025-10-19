@@ -27,7 +27,11 @@
         "role": {
           "type": "string",
           "description": "Role of the user within the system (e.g., 'admin', 'viewer', 'disabled').",
-          "enum": ["admin", "viewer", "disabled"]
+          "enum": [
+            "admin",
+            "viewer",
+            "disabled"
+          ]
         }
       },
       "required": [
@@ -51,6 +55,18 @@
           "type": "string",
           "description": "The unique key for the second scan."
         },
+        "thirdKey": {
+          "type": "string",
+          "description": "The unique key for the third scan."
+        },
+        "totalScans": {
+          "type": "number",
+          "description": "The total number of scans for this session (e.g. 2, 3)."
+        },
+        "currentScan": {
+          "type": "number",
+          "description": "The current active scan number (1, 2, or 3)."
+        },
         "adminUid": {
           "type": "string",
           "description": "Reference to User. Unique identifier of the admin who created the session."
@@ -68,6 +84,10 @@
           "type": "number",
           "description": "Longitude of the location where the attendance session is valid."
         },
+        "radius": {
+          "type": "number",
+          "description": "Allowed radius in meters for check-in."
+        },
         "lateAfterMinutes": {
           "type": "number",
           "description": "The number of minutes after which a student is marked as late for the first scan."
@@ -75,6 +95,10 @@
         "secondScanLateAfterMinutes": {
           "type": "number",
           "description": "The number of minutes after which a student is marked as late for the second scan."
+        },
+        "thirdScanLateAfterMinutes": {
+          "type": "number",
+          "description": "The number of minutes after which a student is marked as late for the third scan."
         },
         "subject": {
           "type": "string",
@@ -86,7 +110,44 @@
         "adminUid",
         "createdAt",
         "lat",
-        "lng"
+        "lng",
+        "radius",
+        "totalScans",
+        "currentScan"
+      ]
+    },
+    "ScanData": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ScanData",
+      "type": "object",
+      "description": "Represents the status and data for a single scan within an attendance record.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "present",
+            "late",
+            "absent"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "minutesLate": {
+          "type": "number"
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "photoURL": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "minutesLate"
       ]
     },
     "AttendanceRecord": {
@@ -98,36 +159,11 @@
         "student": {
           "$ref": "#/entities/User"
         },
-        "scan1_status": {
-          "type": "string",
-          "enum": [
-            "present",
-            "late",
-            "absent"
-          ]
-        },
-        "scan1_timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "scan1_minutesLate": {
-            "type": "number"
-        },
-        "scan2_status": {
-          "type": "string",
-          "enum": [
-            "present",
-            "late",
-            "absent",
-            "n/a"
-          ]
-        },
-        "scan2_timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "scan2_minutesLate": {
-            "type": "number"
+        "scans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/entities/ScanData"
+          }
         },
         "finalStatus": {
           "type": "string",
@@ -138,17 +174,30 @@
             "left_early"
           ]
         },
-        "deviceId": {
-          "type": "string"
-        },
-        "photoURL": {
-            "type": "string"
+        "correctionRequest": {
+          "type": "object",
+          "properties": {
+            "requestedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "denied"
+              ]
+            }
+          }
         }
       },
       "required": [
         "student",
-        "scan1_status",
-        "scan2_status",
+        "scans",
         "finalStatus"
       ]
     },
@@ -169,7 +218,10 @@
         },
         "senderRole": {
           "type": "string",
-          "enum": ["admin", "viewer"]
+          "enum": [
+            "admin",
+            "viewer"
+          ]
         },
         "timestamp": {
           "type": "string",
@@ -197,6 +249,33 @@
           "type": "boolean"
         }
       }
+    },
+    "Translate": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Translate",
+      "type": "object",
+      "description": "Represents a text translation request and result.",
+      "properties": {
+        "sourceText": {
+          "type": "string"
+        },
+        "sourceLanguage": {
+          "type": "string",
+          "enum": ["English", "Chinese"]
+        },
+        "targetLanguage": {
+          "type": "string",
+          "enum": ["English", "Chinese"]
+        },
+        "translatedText": {
+          "type": "string"
+        }
+      },
+       "required": [
+        "sourceText",
+        "sourceLanguage",
+        "targetLanguage"
+      ]
     }
   },
   "auth": {

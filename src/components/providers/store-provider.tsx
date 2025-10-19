@@ -52,7 +52,7 @@ type StoreContextType = {
   students: UserProfile[];
   startSession: (lateAfterMinutes: number, subject: string, totalScans: number, radius: number) => void;
   endSession: () => void;
-  markAttendance: (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => void;
+  markAttendance: (studentId: string, code: string, deviceId: string) => void;
   activateNextScan: () => void;
   requestCorrection: (studentId: string, reason: string) => void;
   handleCorrectionRequest: (studentId: string, approved: boolean) => void;
@@ -371,7 +371,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 }, [sessionDocRef, dbSession, firestore, toast]);
 
 
-const markAttendance = useCallback(async (studentId: string, code: string, location: { lat: number; lng: number }, deviceId: string) => {
+const markAttendance = useCallback(async (studentId: string, code: string, deviceId: string) => {
     if (!firestore || session.status !== 'active' || !session.startTime) {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
         return;
@@ -396,13 +396,6 @@ const markAttendance = useCallback(async (studentId: string, code: string, locat
 
     if (codePrefix !== `scan${session.currentScan}`) {
         toast({ variant: 'destructive', title: 'Wrong Session QR', description: `This QR is for Scan ${codePrefix.replace('scan', '')}, but Scan ${session.currentScan} is active.` });
-        return;
-    }
-    
-    const allowedRadius = session.radius ?? 100; // Default to 100 meters
-    const distance = getDistance({ lat: session.lat!, lng: session.lng! }, location);
-    if (distance > allowedRadius) {
-        toast({ variant: 'destructive', title: 'Out of Range', description: `You are too far from the session location. (Distance: ${Math.round(distance)}m)` });
         return;
     }
     

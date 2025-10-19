@@ -6,6 +6,7 @@ import {
   Users,
   History,
   MessageSquare,
+  Languages,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -17,12 +18,14 @@ const adminNavItems = [
   { href: '/students', icon: Users, label: 'Residents' },
   { href: '/reports', icon: History, label: 'Reports' },
   { href: '/chat', icon: MessageSquare, label: 'Chat' },
+  { href: '/translate', icon: Languages, label: 'Translate' },
 ];
 
 const studentNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/history', icon: History, label: 'My History' },
   { href: '/chat', icon: MessageSquare, label: 'Chat' },
+  { href: '/translate', icon: Languages, label: 'Translate' },
 ];
 
 export function MainSidebar({ className, mobile = false }: { className?: string, mobile?: boolean }) {
