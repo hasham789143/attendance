@@ -1,12 +1,14 @@
+
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Languages, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslation } from '@/components/providers/translation-provider';
+import { useDebounce } from '@/hooks/use-debounce';
 
 export default function TranslatePage() {
   const [sourceText, setSourceText] = useState('');
@@ -14,19 +16,31 @@ export default function TranslatePage() {
   const [targetLang, setTargetLang] = useState('Chinese');
   
   const { translatedText, isTranslating, translate } = useTranslation();
+  
+  // Debounce the source text so we don't call the API on every keystroke
+  const debouncedSourceText = useDebounce(sourceText, 500);
 
-  const handleTranslate = () => {
-    if (!sourceText.trim()) return;
-    translate({
-      text: sourceText,
-      sourceLanguage: sourceLang,
-      targetLanguage: targetLang,
-    });
-  };
+  useEffect(() => {
+    if (debouncedSourceText.trim()) {
+      translate({
+        text: debouncedSourceText,
+        sourceLanguage: sourceLang,
+        targetLanguage: targetLang,
+      });
+    }
+  }, [debouncedSourceText, sourceLang, targetLang, translate]);
+
   
   const handleSwapLanguages = () => {
-    setSourceLang(targetLang);
-    setTargetLang(sourceLang);
+    const newSourceLang = targetLang;
+    const newTargetLang = sourceLang;
+    const currentTranslatedText = translatedText;
+
+    setSourceLang(newSourceLang);
+    setTargetLang(newTargetLang);
+    
+    // Swap the text content as well
+    setSourceText(currentTranslatedText);
   }
 
   return (
@@ -39,7 +53,7 @@ export default function TranslatePage() {
       <Card>
         <CardHeader>
           <CardTitle>Text Translation</CardTitle>
-          <CardDescription>Enter text and select the languages to translate.</CardDescription>
+          <CardDescription>Enter text and select the languages to translate. Translation happens automatically as you type.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
@@ -74,26 +88,21 @@ export default function TranslatePage() {
                   <SelectItem value="Chinese">Chinese</SelectItem>
                 </SelectContent>
               </Select>
-              <Textarea
-                id="translated-text"
-                placeholder="Translation will appear here..."
-                value={isTranslating ? "Translating..." : translatedText}
-                readOnly
-                rows={5}
-                className="bg-muted"
-              />
+              <div className="relative">
+                <Textarea
+                  id="translated-text"
+                  placeholder="Translation will appear here..."
+                  value={isTranslating && !translatedText ? "Translating..." : translatedText}
+                  readOnly
+                  rows={5}
+                  className="bg-muted"
+                />
+                {isTranslating && <Loader2 className="absolute top-3 right-3 h-5 w-5 animate-spin text-muted-foreground" />}
+              </div>
             </div>
           </div>
           
           <div className="flex justify-center items-center gap-4">
-            <Button onClick={handleTranslate} disabled={isTranslating || !sourceText.trim()}>
-              {isTranslating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Languages className="mr-2 h-4 w-4" />
-              )}
-              Translate
-            </Button>
             <Button onClick={handleSwapLanguages} variant="outline">
                 Swap Languages
             </Button>
