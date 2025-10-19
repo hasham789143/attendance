@@ -11,15 +11,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, Menu } from 'lucide-react';
+import { LogOut, Menu, Languages } from 'lucide-react';
 import { Logo } from '../logo';
 import { Sheet, SheetContent, SheetTrigger } from '../ui/sheet';
 import { MainSidebar } from './main-sidebar';
 import Link from 'next/link';
+import { useTranslation } from '../providers/translation-provider';
 
 export function Header() {
   const { userProfile, logout } = useAuth();
+  const { language, setLanguage, t } = useTranslation();
   const initials = userProfile?.name.split(' ').map(n => n[0]).join('') || 'U';
+
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'zh' : 'en');
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
@@ -48,6 +54,9 @@ export function Header() {
             <Logo />
         </div>
         <div className="flex w-full items-center gap-4 md:ml-auto md:flex-initial md:justify-end">
+            <Button variant="ghost" size="icon" onClick={toggleLanguage} aria-label="Toggle language">
+                <Languages className="h-5 w-5" />
+            </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -67,7 +76,7 @@ export function Header() {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout}>
                 <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
+                <span>{t('header.logout')}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

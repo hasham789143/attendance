@@ -17,11 +17,14 @@ import { cn, getScanLabel } from '@/lib/utils';
 import { ScanData } from '@/models/backend';
 import { CorrectionRequestDialog } from './correction-request-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTranslation } from '../providers/translation-provider';
 
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
   const { attendance, session, handleCorrectionRequest } = useStore();
   const [requestToReview, setRequestToReview] = useState<AttendanceRecord | null>(null);
+  const { t, language } = useTranslation();
+
 
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
   
@@ -48,13 +51,13 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
     switch (finalStatus) {
       case 'present':
-        return <Badge variant="default" className="bg-green-600">Present</Badge>;
+        return <Badge variant="default" className="bg-green-600">{t('dashboard.status.present')}</Badge>;
       case 'late':
-        return <Badge variant="secondary" className="bg-yellow-500 text-black">Late ({totalMinutesLate}m)</Badge>;
+        return <Badge variant="secondary" className="bg-yellow-500 text-black">{t('dashboard.status.late')} ({totalMinutesLate}m)</Badge>;
       case 'left_early':
-        return <Badge variant="secondary" className="bg-orange-500">Left Early</Badge>;
+        return <Badge variant="secondary" className="bg-orange-500">{t('dashboard.status.leftEarly')}</Badge>;
       case 'absent':
-        return <Badge variant="destructive">Absent</Badge>;
+        return <Badge variant="destructive">{t('dashboard.status.absent')}</Badge>;
       default:
         return <Badge variant="outline">N/A</Badge>;
     }
@@ -69,7 +72,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         }
     });
     if (missed.length > 0) {
-        return <span className="text-xs text-destructive">Missed: {missed.map(m => getScanLabel(m, true)).join(', ')}</span>
+        return <span className="text-xs text-destructive">{t('dashboard.missedScans')}: {missed.map(m => getScanLabel(m, true, t)).join(', ')}</span>
     }
     return null;
   }
@@ -85,11 +88,11 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
     const doc = new jsPDF({ orientation: 'landscape' });
     const totalScans = session.totalScans || 0;
 
-    const tableColumn: string[] = ["Room No", "Name"];
+    const tableColumn: string[] = [t('pdf.rollNo'), t('pdf.name')];
     for (let i = 1; i <= totalScans; i++) {
-        tableColumn.push(`${getScanLabel(i)} Status`, `${getScanLabel(i)} Time`);
+        tableColumn.push(`${getScanLabel(i, false, t)} ${t('pdf.status')}`, `${getScanLabel(i, false, t)} ${t('pdf.time')}`);
     }
-    tableColumn.push("Final Status");
+    tableColumn.push(t('pdf.finalStatus'));
     
     const tableRows: any[][] = [];
 
@@ -101,7 +104,8 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
       for (let i = 0; i < totalScans; i++) {
         const scan = record.scans[i] || { status: 'absent', minutesLate: 0, timestamp: null };
-        let status = scan.status.charAt(0).toUpperCase() + scan.status.slice(1);
+        let statusKey = `dashboard.status.${scan.status}`;
+        let status = t(statusKey as any);
         if (scan.status === 'late' && scan.minutesLate > 0) {
             status += ` (${scan.minutesLate}m)`;
         }
@@ -109,7 +113,9 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         rowData.push(status, time);
       }
       
-      const finalStatus = getFinalStatus(record).replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      const finalStatusKey = `dashboard.status.${getFinalStatus(record).replace('_', '')}`;
+      const finalStatus = t(finalStatusKey as any);
+
       rowData.push(finalStatus);
       
       tableRows.push(rowData);
@@ -121,10 +127,10 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         startY: 20,
         didDrawPage: function (data) {
             doc.setFontSize(20);
-            doc.text(`Live Attendance Report (${filter}) - ${format(new Date(), 'PPP p')}`, data.settings.margin.left, 15);
+            doc.text(`${t('pdf.liveReportTitle')} (${t('dashboard.filters.'+filter)}) - ${format(new Date(), 'PPP p')}`, data.settings.margin.left, 15);
         }
     });
-    doc.save(`live-attendance-report-${filter}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`${t('pdf.liveReportFilename')}-${filter}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const onReviewClose = (approved?: boolean) => {
@@ -145,22 +151,22 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
       <Card>
         <CardHeader className='flex-row items-center justify-between'>
           <div>
-              <CardTitle>Live Attendance Roster</CardTitle>
-              <CardDescription>{filteredAttendance.length} resident(s) showing</CardDescription>
+              <CardTitle>{t('dashboard.rosterTitle')}</CardTitle>
+              <CardDescription>{t('dashboard.rosterDescription', { count: filteredAttendance.length })}</CardDescription>
           </div>
           <Button onClick={downloadPdf} variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
-              Download PDF
+              {t('common.downloadPdf')}
           </Button>
         </CardHeader>
         <CardContent className="max-h-[600px] overflow-y-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-card">
               <TableRow>
-                <TableHead>Room Number</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Last Scan</TableHead>
+                <TableHead>{t('dashboard.table.rollNumber')}</TableHead>
+                <TableHead>{t('dashboard.table.name')}</TableHead>
+                <TableHead>{t('dashboard.table.status')}</TableHead>
+                <TableHead className="text-right">{t('dashboard.table.lastScan')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -173,7 +179,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
                         {record.correctionRequest?.status === 'pending' && (
                             <Button variant="secondary" size="sm" onClick={() => setRequestToReview(record)}>
                                 <MailWarning className="h-4 w-4 mr-2" />
-                                Review Request
+                                {t('dashboard.reviewRequest')}
                             </Button>
                         )}
                       </div>
@@ -197,6 +203,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 export function AdminDashboard() {
   const { session, attendance, students, endSession, activateNextScan } = useStore();
   const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
+  const { t } = useTranslation();
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
@@ -227,24 +234,24 @@ export function AdminDashboard() {
     <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
             <div>
-                <h1 className="text-2xl font-bold font-headline">Admin Dashboard</h1>
-                <p className="text-muted-foreground">Manage hostel attendance and monitor residents.</p>
+                <h1 className="text-2xl font-bold font-headline">{t('dashboard.adminTitle')}</h1>
+                <p className="text-muted-foreground">{t('dashboard.adminDescription')}</p>
             </div>
             <div className="flex items-center gap-2">
                  <RegisterUserDialog>
                     <Button size="lg" variant="outline">
-                        <UserPlus className="mr-2 h-5 w-5" /> Register New User
+                        <UserPlus className="mr-2 h-5 w-5" /> {t('dashboard.registerUser')}
                     </Button>
                 </RegisterUserDialog>
                 {session.status === 'inactive' || session.status === 'ended' ? (
                     <StartSessionDialog>
                         <Button size="lg">
-                            <PlayCircle className="mr-2 h-5 w-5" /> Start New Session
+                            <PlayCircle className="mr-2 h-5 w-5" /> {t('dashboard.startSession')}
                         </Button>
                     </StartSessionDialog>
                 ) : (
                     <Button size="lg" variant="destructive" onClick={endSession}>
-                        <StopCircle className="mr-2 h-5 w-5" /> End Session
+                        <StopCircle className="mr-2 h-5 w-5" /> {t('dashboard.endSession')}
                     </Button>
                 )}
             </div>
@@ -253,7 +260,7 @@ export function AdminDashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card onClick={() => setFilter('all')} className={cn(cardBaseClasses, filter === 'all' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Residents</CardTitle>
+                    <CardTitle className="text-sm font-medium">{t('dashboard.filters.all')}</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -262,7 +269,7 @@ export function AdminDashboard() {
             </Card>
             <Card onClick={() => setFilter('present')} className={cn(cardBaseClasses, filter === 'present' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Present</CardTitle>
+                    <CardTitle className="text-sm font-medium">{t('dashboard.filters.present')}</CardTitle>
                     <UserCheck className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
@@ -271,7 +278,7 @@ export function AdminDashboard() {
             </Card>
              <Card onClick={() => setFilter('left_early')} className={cn(cardBaseClasses, filter === 'left_early' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Left Early</CardTitle>
+                    <CardTitle className="text-sm font-medium">{t('dashboard.filters.left_early')}</CardTitle>
                     <LogOut className="h-4 w-4 text-orange-500" />
                 </CardHeader>
                 <CardContent>
@@ -280,7 +287,7 @@ export function AdminDashboard() {
             </Card>
             <Card onClick={() => setFilter('absent')} className={cn(cardBaseClasses, filter === 'absent' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Absent</CardTitle>
+                    <CardTitle className="text-sm font-medium">{t('dashboard.filters.absent')}</CardTitle>
                     <UserX className="h-4 w-4 text-destructive" />
                 </CardHeader>
                 <CardContent>
@@ -292,23 +299,23 @@ export function AdminDashboard() {
         {session.status === 'active' && (
             <div className="space-y-2">
                 <Progress value={attendancePercentage} />
-                <p className="text-sm text-muted-foreground text-center">{present} of {totalResidents} residents are fully present.</p>
+                <p className="text-sm text-muted-foreground text-center">{t('dashboard.progressText', { present, total: totalResidents })}</p>
             </div>
         )}
 
         {session.status === 'inactive' || session.status === 'ended' ? (
             <Card className="flex flex-col items-center justify-center min-h-[400px] text-center">
                 <CardContent>
-                    <h2 className="text-xl font-semibold">Session Inactive</h2>
-                    <p className="text-muted-foreground">Click "Start New Session" to begin taking attendance.</p>
+                    <h2 className="text-xl font-semibold">{t('dashboard.inactive.title')}</h2>
+                    <p className="text-muted-foreground">{t('dashboard.inactive.description')}</p>
                 </CardContent>
             </Card>
         ) : (
            <Tabs defaultValue="roster" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="roster">Live Roster</TabsTrigger>
-                    <TabsTrigger value="qrcode">QR Code</TabsTrigger>
-                    <TabsTrigger value="info">Session Info</TabsTrigger>
+                    <TabsTrigger value="roster">{t('dashboard.tabs.roster')}</TabsTrigger>
+                    <TabsTrigger value="qrcode">{t('dashboard.tabs.qrCode')}</TabsTrigger>
+                    <TabsTrigger value="info">{t('dashboard.tabs.info')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="roster">
                     <AttendanceList filter={filter} />
@@ -319,25 +326,25 @@ export function AdminDashboard() {
                 <TabsContent value="info">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Session Information</CardTitle>
-                            <CardDescription>Details and controls for the active session.</CardDescription>
+                            <CardTitle>{t('dashboard.sessionInfo.title')}</CardTitle>
+                            <CardDescription>{t('dashboard.sessionInfo.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
                             <div className="flex items-center space-x-4 rounded-md border p-4">
                                 <MapPin className="h-6 w-6 text-primary"/>
                                 <div className="flex-1 space-y-1">
-                                <p className="text-sm font-medium leading-none">Allowed Radius</p>
+                                <p className="text-sm font-medium leading-none">{t('dashboard.sessionInfo.radius')}</p>
                                 <p className="text-sm text-muted-foreground">
-                                    {session.radius ?? 100} meters
+                                    {session.radius ?? 100} {t('common.meters')}
                                 </p>
                                 </div>
                             </div>
                              <div className="flex items-center space-x-4 rounded-md border p-4">
                                 <AlarmClockCheck className="h-6 w-6 text-primary"/>
                                 <div className="flex-1 space-y-1">
-                                <p className="text-sm font-medium leading-none">Late Policy</p>
+                                <p className="text-sm font-medium leading-none">{t('dashboard.sessionInfo.latePolicy')}</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Marked late after {session.lateAfterMinutes} minutes.
+                                    {t('dashboard.sessionInfo.latePolicyDescription', { minutes: session.lateAfterMinutes })}
                                 </p>
                                 </div>
                             </div>
@@ -345,7 +352,7 @@ export function AdminDashboard() {
                             {session.currentScan < session.totalScans && (
                                 <div className="pt-4">
                                      <Button onClick={activateNextScan} className="w-full">
-                                        <ScanLine className="mr-2 h-4 w-4" /> Activate {getScanLabel(session.currentScan + 1)}
+                                        <ScanLine className="mr-2 h-4 w-4" /> {t('dashboard.activateScan', { scan: getScanLabel(session.currentScan + 1, false, t) })}
                                     </Button>
                                 </div>
                             )}

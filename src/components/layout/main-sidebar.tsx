@@ -12,25 +12,25 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../providers/auth-provider';
 import { Logo } from '../logo';
-
-const adminNavItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/students', icon: Users, label: 'Residents' },
-  { href: '/reports', icon: History, label: 'Reports' },
-  { href: '/chat', icon: MessageSquare, label: 'Chat' },
-  { href: '/translate', icon: Languages, label: 'Translate' },
-];
-
-const studentNavItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/history', icon: History, label: 'My History' },
-  { href: '/chat', icon: MessageSquare, label: 'Chat' },
-  { href: '/translate', icon: Languages, label: 'Translate' },
-];
+import { useTranslation } from '../providers/translation-provider';
 
 export function MainSidebar({ className, mobile = false }: { className?: string, mobile?: boolean }) {
   const pathname = usePathname();
   const { userProfile } = useAuth();
+  const { t } = useTranslation();
+
+  const adminNavItems = [
+    { href: '/dashboard', icon: LayoutDashboard, label: t('sidebar.dashboard') },
+    { href: '/students', icon: Users, label: t('sidebar.residents') },
+    { href: '/reports', icon: History, label: t('sidebar.reports') },
+    { href: '/chat', icon: MessageSquare, label: t('sidebar.chat') },
+  ];
+
+  const studentNavItems = [
+    { href: '/dashboard', icon: LayoutDashboard, label: t('sidebar.dashboard') },
+    { href: '/history', icon: History, label: t('sidebar.myHistory') },
+    { href: '/chat', icon: MessageSquare, label: t('sidebar.chat') },
+  ];
 
   const navItems = userProfile?.role === 'admin' ? adminNavItems : studentNavItems;
   

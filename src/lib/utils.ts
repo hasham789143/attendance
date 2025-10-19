@@ -41,8 +41,12 @@ export function getDeviceId(): string {
 }
 
 
-export function getScanLabel(scanNumber: number, short = false): string {
-    const labels = ["First", "Second", "Third"];
-    const prefix = labels[scanNumber - 1] || `Scan ${scanNumber}`;
-    return short ? prefix : `${prefix} Scan`;
+export function getScanLabel(scanNumber: number, short = false, t?: (key: string) => string): string {
+    const labels = [
+      t ? t('scans.first') : "First",
+      t ? t('scans.second') : "Second",
+      t ? t('scans.third') : "Third"
+    ];
+    const prefix = labels[scanNumber - 1] || `${t ? t('scans.scan') : "Scan"} ${scanNumber}`;
+    return short ? prefix : `${prefix} ${t ? t('scans.scan') : "Scan"}`;
 }

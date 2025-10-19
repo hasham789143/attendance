@@ -1,0 +1,100 @@
+{
+    "common": {
+        "downloadPdf": "下载PDF",
+        "meters": "米",
+        "save": "保存更改",
+        "cancel": "取消",
+        "confirm": "确认",
+        "delete": "删除"
+    },
+    "scans": {
+        "first": "第一次",
+        "second": "第二次",
+        "third": "第三次",
+        "scan": "扫描"
+    },
+    "header": {
+        "logout": "登出"
+    },
+    "sidebar": {
+        "dashboard": "仪表板",
+        "residents": "居民",
+        "reports": "报告",
+        "chat": "聊天",
+        "myHistory": "我的历史"
+    },
+    "dashboard": {
+        "adminTitle": "管理员仪表板",
+        "adminDescription": "管理宿舍考勤并监控居民。",
+        "studentTitle": "居民仪表板",
+        "studentWelcome": "欢迎, {name}",
+        "registerUser": "注册新用户",
+        "startSession": "开始新会话",
+        "endSession": "结束会话",
+        "rosterTitle": "实时考勤名册",
+        "rosterDescription": "显示 {count} 位居民",
+        "reviewRequest": "审查请求",
+        "missedScans": "错过",
+        "activateScan": "激活{scan}",
+        "progressText": "{total} 名居民中已有 {present} 名完全到场。",
+        "inactive": {
+            "title": "会话未激活",
+            "description": "点击“开始新会话”以开始考勤。"
+        },
+        "filters": {
+            "all": "总居民",
+            "present": "到场",
+            "absent": "缺席",
+            "left_early": "早退"
+        },
+        "status": {
+            "present": "到场",
+            "late": "迟到",
+            "absent": "缺席",
+            "leftEarly": "早退"
+        },
+        "table": {
+            "rollNumber": "房间号",
+            "name": "姓名",
+            "status": "状态",
+            "lastScan": "最后扫描"
+        },
+        "tabs": {
+            "roster": "实时名册",
+            "qrCode": "二维码",
+            "info": "会话信息"
+        },
+        "sessionInfo": {
+            "title": "会话信息",
+            "description": "活动会话的详细信息和控制。",
+            "radius": "允许半径",
+            "latePolicy": "迟到政策",
+            "latePolicyDescription": "{minutes} 分钟后标记为迟到。"
+        },
+        "student": {
+            "currentSessionStatus": "当前会话状态",
+            "noActiveSession": "当前没有活动的考勤会话。",
+            "sessionActive": "会话进行中。当前扫描: {current} / {total}",
+            "loadingStatus": "正在加载考勤状态...",
+            "requestPending": "更正请求待管理员批准。",
+            "requestDenied": "您的更正请求已被拒绝。",
+            "finalStatus": "最终状态: {status}",
+            "allScansCompleted": "所有扫描已完成。做得好！",
+            "nextScan": "下一次是第 {scanLabel} 次扫描（共 {total} 次）。",
+            "promptNextScan": "请在下一个二维码出现时扫描。",
+            "markedAbsent": "您被标记为缺席",
+            "scanToMark": "扫描二维码以记录您的考勤。",
+            "requestCorrection": "请求更正",
+            "scanQrFor": "扫描二维码进行{scanLabel}"
+        }
+    },
+    "pdf": {
+        "rollNo": "房间号",
+        "name": "姓名",
+        "status": "状态",
+        "time": "时间",
+        "finalStatus": "最终状态",
+        "liveReportTitle": "实时考勤报告",
+        "liveReportFilename": "实时考勤报告"
+    }
+}

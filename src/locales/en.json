@@ -1,0 +1,100 @@
+{
+    "common": {
+        "downloadPdf": "Download PDF",
+        "meters": "meters",
+        "save": "Save Changes",
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "delete": "Delete"
+    },
+    "scans": {
+        "first": "First",
+        "second": "Second",
+        "third": "Third",
+        "scan": "Scan"
+    },
+    "header": {
+        "logout": "Log out"
+    },
+    "sidebar": {
+        "dashboard": "Dashboard",
+        "residents": "Residents",
+        "reports": "Reports",
+        "chat": "Chat",
+        "myHistory": "My History"
+    },
+    "dashboard": {
+        "adminTitle": "Admin Dashboard",
+        "adminDescription": "Manage hostel attendance and monitor residents.",
+        "studentTitle": "Resident Dashboard",
+        "studentWelcome": "Welcome, {name}",
+        "registerUser": "Register New User",
+        "startSession": "Start New Session",
+        "endSession": "End Session",
+        "rosterTitle": "Live Attendance Roster",
+        "rosterDescription": "{count} resident(s) showing",
+        "reviewRequest": "Review Request",
+        "missedScans": "Missed",
+        "activateScan": "Activate {scan}",
+        "progressText": "{present} of {total} residents are fully present.",
+        "inactive": {
+            "title": "Session Inactive",
+            "description": "Click \"Start New Session\" to begin taking attendance."
+        },
+        "filters": {
+            "all": "Total Residents",
+            "present": "Present",
+            "absent": "Absent",
+            "left_early": "Left Early"
+        },
+        "status": {
+            "present": "Present",
+            "late": "Late",
+            "absent": "Absent",
+            "leftEarly": "Left Early"
+        },
+        "table": {
+            "rollNumber": "Room Number",
+            "name": "Name",
+            "status": "Status",
+            "lastScan": "Last Scan"
+        },
+        "tabs": {
+            "roster": "Live Roster",
+            "qrCode": "QR Code",
+            "info": "Session Info"
+        },
+        "sessionInfo": {
+            "title": "Session Information",
+            "description": "Details and controls for the active session.",
+            "radius": "Allowed Radius",
+            "latePolicy": "Late Policy",
+            "latePolicyDescription": "Marked late after {minutes} minutes."
+        },
+        "student": {
+            "currentSessionStatus": "Current Session Status",
+            "noActiveSession": "There is no active attendance session.",
+            "sessionActive": "Session is active. Current scan: {current} of {total}",
+            "loadingStatus": "Loading attendance status...",
+            "requestPending": "Correction request is pending admin approval.",
+            "requestDenied": "Your correction request was denied.",
+            "finalStatus": "Final Status: {status}",
+            "allScansCompleted": "All scans completed. Well done!",
+            "nextScan": "{scanLabel} of {total} is next.",
+            "promptNextScan": "Please scan the next QR code when it is presented.",
+            "markedAbsent": "You are marked Absent",
+            "scanToMark": "Scan the QR code to mark your attendance.",
+            "requestCorrection": "Request Correction",
+            "scanQrFor": "Scan QR Code for {scanLabel}"
+        }
+    },
+    "pdf": {
+        "rollNo": "Room No",
+        "name": "Name",
+        "status": "Status",
+        "time": "Time",
+        "finalStatus": "Final Status",
+        "liveReportTitle": "Live Attendance Report",
+        "liveReportFilename": "live-attendance-report"
+    }
+}

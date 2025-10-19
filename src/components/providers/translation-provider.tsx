@@ -1,46 +1,49 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast.tsx';
-import { translateText } from '@/ai/flows/text-translation.flow';
-import type { TranslateTextInput } from '@/ai/flows/text-translation.flow';
+
+// Import translation files
+import en from '@/locales/en.json';
+import zh from '@/locales/zh.json';
+
+type Language = 'en' | 'zh';
+
+type Translations = {
+  [key: string]: string | Translations;
+};
+
+const dictionaries: { [key in Language]: Translations } = { en, zh };
 
 type TranslationContextType = {
-  translatedText: string;
-  isTranslating: boolean;
-  translate: (input: TranslateTextInput) => void;
+  language: Language;
+  setLanguage: (language: Language) => void;
+  t: (key: string) => string;
 };
 
 const TranslationContext = createContext<TranslationContextType | undefined>(undefined);
 
 export function TranslationProvider({ children }: { children: ReactNode }) {
-  const [translatedText, setTranslatedText] = useState('');
-  const [isTranslating, setIsTranslating] = useState(false);
-  const { toast } = useToast();
+  const [language, setLanguage] = useState<Language>('en');
 
-  const translate = useCallback(async (input: TranslateTextInput) => {
-    setIsTranslating(true);
-    setTranslatedText('');
-    try {
-      const result = await translateText(input);
-      setTranslatedText(result.translatedText);
-    } catch (error) {
-      console.error("Translation failed:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Translation Error',
-        description: 'Could not translate the text. Please try again.',
-      });
-      setTranslatedText('');
-    } finally {
-      setIsTranslating(false);
+  const t = useCallback((key: string): string => {
+    const keys = key.split('.');
+    let result: string | Translations | undefined = dictionaries[language];
+    for (const k of keys) {
+      if (result && typeof result === 'object') {
+        result = (result as Translations)[k];
+      } else {
+        return key; // Return the key if path is invalid
+      }
     }
-  }, [toast]);
+    return typeof result === 'string' ? result : key;
+  }, [language]);
+  
 
   const value = {
-    translatedText,
-    isTranslating,
-    translate,
+    language,
+    setLanguage,
+    t,
   };
 
   return (
