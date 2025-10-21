@@ -2,7 +2,15 @@
 import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage";
 import { initializeFirebase } from ".";
 
-const { storage } = initializeFirebase();
+// Do not initialize here directly. Defer it.
+let storage: ReturnType<typeof getStorage>;
+
+function getStorageInstance() {
+  if (!storage) {
+    storage = initializeFirebase().storage;
+  }
+  return storage;
+}
 
 /**
  * Converts a data URL to a Blob object.
@@ -36,10 +44,11 @@ function dataURLtoBlob(dataUrl: string): Blob {
  */
 export async function uploadImageAndGetURL(dataUrl: string, userId: string): Promise<string> {
   try {
+    const storageInstance = getStorageInstance();
     const timestamp = new Date().getTime();
     const randomSuffix = Math.random().toString(36).substring(2, 8);
     const fileName = `${timestamp}-${randomSuffix}.jpg`;
-    const storageRef = ref(storage, `selfies/${userId}/${fileName}`);
+    const storageRef = ref(storageInstance, `selfies/${userId}/${fileName}`);
 
     // Firebase's uploadString automatically handles base64 data URLs
     const snapshot = await uploadString(storageRef, dataUrl, 'data_url');
