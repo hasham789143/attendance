@@ -42,7 +42,6 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevMessagesCount = useRef(0);
 
   // This effect correctly sets the initial chat context for both admins and students.
   useEffect(() => {
@@ -73,21 +72,6 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  useEffect(() => {
-    if (messages && messages.length > prevMessagesCount.current) {
-        const latestMessage = messages[messages.length - 1];
-        if (latestMessage && latestMessage.senderUid !== userProfile?.uid) {
-             if (document.visibilityState !== 'visible') {
-                toast({
-                    title: `New Message from ${latestMessage.senderName}`,
-                    description: latestMessage.text,
-                });
-            }
-        }
-    }
-    prevMessagesCount.current = messages ? messages.length : 0;
-  }, [messages, userProfile?.uid, toast]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
