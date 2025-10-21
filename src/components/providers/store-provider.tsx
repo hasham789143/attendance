@@ -3,7 +3,7 @@
 
 import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
-import { useAuth, UserProfile } from './auth-provider';
+import { UserProfile } from './auth-provider';
 import { collection, query, where, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { useCollection, useDoc, useFirebase, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { AttendanceSession, ScanData } from '@/models/backend';
@@ -77,14 +77,13 @@ type StoreContextType = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-function useUsers() {
+function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
-    const { userProfile } = useAuth();
 
     // The query is now stable and does not depend on attendanceMode.
     // For admins, it fetches all non-admin users. For others, just their own profile.
     const usersQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !userProfile) return null;
         
         const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
@@ -92,11 +91,7 @@ function useUsers() {
            return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
         }
         
-        if (userProfile) {
-           return query(baseQuery, where('uid', '==', userProfile.uid));
-        }
-
-        return null; 
+        return query(baseQuery, where('uid', '==', userProfile.uid));
 
     }, [firestore, userProfile]);
 
@@ -106,12 +101,11 @@ function useUsers() {
 }
 
 
-export function StoreProvider({ children }: { children: ReactNode }) {
+export function StoreProvider({ children, userProfile }: { children: ReactNode, userProfile: UserProfile | null }) {
   const { toast } = useToast();
   const { firestore } = useFirebase();
-  const { userProfile } = useAuth();
   const [attendanceMode, setAttendanceModeState] = useState<AttendanceMode>('class');
-  const { users: allUsers, isLoading: areUsersLoading } = useUsers();
+  const { users: allUsers, isLoading: areUsersLoading } = useUsers(userProfile);
 
 
   const sessionDocRef = useMemoFirebase(() => {
@@ -733,5 +727,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    
