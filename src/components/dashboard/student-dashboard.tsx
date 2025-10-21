@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle, Send, ShieldAlert } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle, Send, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
@@ -65,6 +65,8 @@ export function StudentDashboard() {
   
   const [isClient, setIsClient] = useState(false);
   const [isInRange, setIsInRange] = useState<boolean | null>(null);
+  const [distance, setDistance] = useState<number | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -73,49 +75,38 @@ export function StudentDashboard() {
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
   useEffect(() => {
-    if (showScanner && hasCameraPermission === null) { 
-        const getCameraPermission = async () => {
-            try {
-              await navigator.mediaDevices.getUserMedia({ video: true });
-              setHasCameraPermission(true);
-            } catch (error) {
-              console.error('Error accessing camera:', error);
-              setHasCameraPermission(false);
-              setShowScanner(false);
-            }
-        };
-        getCameraPermission();
+    if (session.status === 'active' && session.lat && session.lng && session.radius) {
+      setIsInRange(null);
+      setDistance(null);
+      setLocationError(null);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const dist = getDistance({ lat: session.lat!, lng: session.lng! }, { lat: latitude, lng: longitude });
+          setDistance(dist);
+          setIsInRange(dist <= session.radius!);
+          setLocationError(null);
+        },
+        (error) => {
+          const errorMessage = `Could not get location: ${error.message}. Please enable location services.`;
+          toast({ variant: 'destructive', title: 'Location Error', description: errorMessage });
+          setIsInRange(false);
+          setDistance(null);
+          setLocationError(errorMessage);
+        }
+      );
+    } else {
+      setIsInRange(null);
+      setDistance(null);
+      setLocationError(null);
     }
-  }, [showScanner, hasCameraPermission]);
-  
-   useEffect(() => {
-    if (showScanner) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const { latitude, longitude } = position.coords;
-                if(session.lat && session.lng && session.radius) {
-                    const distance = getDistance({ lat: session.lat, lng: session.lng }, { lat: latitude, lng: longitude });
-                    setIsInRange(distance <= session.radius);
-                }
-            },
-            (error) => {
-                toast({
-                    variant: 'destructive',
-                    title: 'Location Error',
-                    description: `Could not get location: ${error.message}. Please enable location services.`,
-                });
-                setIsInRange(false);
-            }
-        );
-    }
-  }, [showScanner, session.lat, session.lng, session.radius, toast]);
+  }, [session.status, session.lat, session.lng, session.radius, toast]);
 
 
   const resetScanner = () => {
     setShowScanner(false);
     setScannedData(null);
     setIsLoading(false);
-    setIsInRange(null);
   }
 
   const processScan = (result: string | null) => {
@@ -249,7 +240,21 @@ export function StudentDashboard() {
     if (!isClient || !myRecord) return false;
     if(myRecord.correctionRequest?.status === 'pending' || myRecord.correctionRequest?.status === 'denied') return false;
     const scansCompleted = myRecord.scans.filter(s => s.status !== 'absent').length;
-    return session.status === 'active' && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
+    // Only show if in range
+    return session.status === 'active' && isInRange && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
+  }
+
+  const handleScanButtonClick = async () => {
+     // Check for camera permission before showing scanner
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop()); // Immediately stop the stream
+        setHasCameraPermission(true);
+        setShowScanner(true);
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+      }
   }
 
   return (
@@ -268,6 +273,16 @@ export function StudentDashboard() {
           </Alert>
       )}
 
+      {locationError && (
+          <Alert variant="destructive">
+              <AlertTitle>Location Error</AlertTitle>
+              <AlertDescription>
+                  {locationError}
+              </AlertDescription>
+          </Alert>
+      )}
+
+
       {showCorrectionDialog && (
           <CorrectionRequestDialog 
               onCancel={() => setShowCorrectionDialog(false)}
@@ -276,13 +291,22 @@ export function StudentDashboard() {
       )}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Current Session Status</CardTitle>
-          <CardDescription>
-            {session.status !== 'active'
-              ? 'There is no active attendance session.'
-              : `Session is active. Current scan: ${getScanLabel(session.currentScan)} of ${session.totalScans}`}
-          </CardDescription>
+        <CardHeader className="flex flex-row justify-between items-start">
+            <div>
+                <CardTitle>Current Session Status</CardTitle>
+                <CardDescription>
+                    {session.status !== 'active'
+                    ? 'There is no active attendance session.'
+                    : `Session is active. Current scan: ${getScanLabel(session.currentScan)} of ${session.totalScans}`}
+                </CardDescription>
+            </div>
+            {session.status === 'active' && (
+                <Card className="p-3 w-fit">
+                    {isInRange === null && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin"/> Checking location...</div>}
+                    {isInRange === true && <div className="flex items-center gap-2 text-green-600 font-semibold"><Wifi className="h-4 w-4"/> In Range ({distance?.toFixed(0)}m away)</div>}
+                    {isInRange === false && <div className="flex items-center gap-2 text-destructive font-semibold"><WifiOff className="h-4 w-4"/> Out of Range</div>}
+                </Card>
+            )}
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="p-6 border rounded-lg bg-secondary/30 min-h-[120px] flex items-center justify-center">
@@ -312,9 +336,7 @@ export function StudentDashboard() {
                       {!isLoading && !scannedData && hasCameraPermission && (
                         <>
                           <div className="mb-2">
-                                {isInRange === null && <p className="text-sm text-muted-foreground">Checking location...</p>}
-                                {isInRange === true && <p className="text-sm text-green-600 font-semibold">You are in range and can mark attendance.</p>}
-                                {isInRange === false && <p className="text-sm text-destructive font-semibold">You are out of range. Please move closer.</p>}
+                                <p className="text-sm text-green-600 font-semibold">Point your camera at the QR code.</p>
                           </div>
                           <Scanner
                               onScan={handleScanResult}
@@ -343,13 +365,21 @@ export function StudentDashboard() {
                       </div>
                   </div>
                 ) : (
-                  <Button onClick={() => setShowScanner(true)} size="lg" disabled={isLoading}>
+                  <Button onClick={handleScanButtonClick} size="lg" disabled={isLoading}>
                       <QrCode className="mr-2 h-5 w-5" />
                       Scan QR Code for {getScanLabel(session.currentScan)}
                   </Button>
                 )}
               </>
             )}
+            {session.status === 'active' && isInRange === false && !locationError &&
+             <Alert variant="destructive">
+                <AlertTitle>You are out of range</AlertTitle>
+                <AlertDescription>
+                    Please move closer to the session location to be able to scan the QR code.
+                </AlertDescription>
+            </Alert>
+            }
           </div>
         </CardContent>
       </Card>
