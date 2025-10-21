@@ -1,4 +1,3 @@
-
 'use client';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
 import { Button } from '@/components/ui/button';
@@ -211,14 +210,14 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
 
 export function AdminDashboard() {
-  const { session, attendance, students, endSession, activateNextScan, attendanceMode, setAttendanceMode } = useStore();
+  const { session, attendance, usersForSession, endSession, activateNextScan, attendanceMode, setAttendanceMode } = useStore();
   const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
   const { t } = useTranslation();
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-       if (record.scans.some(s => s.status === 'absent')) return 'left_early';
+      if (attendanceMode === 'class' && record.scans.some(s => s.status === 'absent')) return 'left_early';
       if (record.scans.some(s => s.status === 'late')) return 'late';
       return 'present';
   };
@@ -232,13 +231,15 @@ export function AdminDashboard() {
       else if (finalStatus === 'absent') counts.absent++;
     });
     return counts;
-  }, [attendance, session.totalScans]);
+  }, [attendance, session.totalScans, attendanceMode]);
   
-  const totalResidents = students?.length || 0;
-  const attendancePercentage = totalResidents > 0 ? (present / totalResidents) * 100 : 0;
+  const totalUsers = usersForSession?.length || 0;
+  const attendancePercentage = totalUsers > 0 ? (present / totalUsers) * 100 : 0;
 
   const cardBaseClasses = "cursor-pointer transition-all duration-200 ease-in-out hover:shadow-md";
   const activeCardClasses = "ring-2 ring-primary shadow-lg";
+
+  const totalUsersLabel = attendanceMode === 'class' ? t('dashboard.filters.totalStudents') : t('dashboard.filters.totalResidents');
 
   return (
     <div className="flex flex-col gap-6">
@@ -280,11 +281,11 @@ export function AdminDashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card onClick={() => setFilter('all')} className={cn(cardBaseClasses, filter === 'all' && activeCardClasses)}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">{t('dashboard.filters.all')}</CardTitle>
+                    <CardTitle className="text-sm font-medium">{totalUsersLabel}</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{totalResidents}</div>
+                    <div className="text-2xl font-bold">{totalUsers}</div>
                 </CardContent>
             </Card>
             <Card onClick={() => setFilter('present')} className={cn(cardBaseClasses, filter === 'present' && activeCardClasses)}>
@@ -296,16 +297,18 @@ export function AdminDashboard() {
                     <div className="text-2xl font-bold">{present}</div>
                 </CardContent>
             </Card>
-             <Card onClick={() => setFilter('left_early')} className={cn(cardBaseClasses, filter === 'left_early' && activeCardClasses)}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">{t('dashboard.filters.left_early')}</CardTitle>
-                    <LogOut className="h-4 w-4 text-orange-500" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{leftEarly}</div>
-                </CardContent>
-            </Card>
-            <Card onClick={() => setFilter('absent')} className={cn(cardBaseClasses, filter === 'absent' && activeCardClasses)}>
+             {attendanceMode === 'class' && (
+                <Card onClick={() => setFilter('left_early')} className={cn(cardBaseClasses, filter === 'left_early' && activeCardClasses)}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">{t('dashboard.filters.left_early')}</CardTitle>
+                        <LogOut className="h-4 w-4 text-orange-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{leftEarly}</div>
+                    </CardContent>
+                </Card>
+             )}
+            <Card onClick={() => setFilter('absent')} className={cn(cardBaseClasses, filter === 'absent' && activeCardClasses, attendanceMode === 'hostel' && 'col-start-4')}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">{t('dashboard.filters.absent')}</CardTitle>
                     <UserX className="h-4 w-4 text-destructive" />
@@ -319,7 +322,7 @@ export function AdminDashboard() {
         {session.status === 'active' && (
             <div className="space-y-2">
                 <Progress value={attendancePercentage} />
-                <p className="text-sm text-muted-foreground text-center">{t('dashboard.progressText', { present, total: totalResidents })}</p>
+                <p className="text-sm text-muted-foreground text-center">{t('dashboard.progressText', { present, total: totalUsers })}</p>
             </div>
         )}
 
@@ -334,7 +337,7 @@ export function AdminDashboard() {
            <Tabs defaultValue="roster" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="roster">{t('dashboard.tabs.roster')}</TabsTrigger>
-                    <TabsTrigger value="qrcode">{t('dashboard.tabs.qrCode')}</TabsTrigger>
+                    <TabsTrigger value="qrcode">{attendanceMode === 'class' ? t('dashboard.tabs.qrCode') : 'Session PIN'}</TabsTrigger>
                     <TabsTrigger value="info">{t('dashboard.tabs.info')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="roster">
@@ -387,5 +390,3 @@ export function AdminDashboard() {
 
 // Helper type
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
-
-    

@@ -1,4 +1,3 @@
-
 'use client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
@@ -6,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle, Send, ShieldAlert, Wifi, WifiOff, Camera, School, Building } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle, Send, ShieldAlert, Wifi, WifiOff, Camera, School, Building, KeyRound } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
@@ -88,6 +87,8 @@ export function StudentDashboard() {
   }, [userProfile, setAttendanceMode]);
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
+  const uniqueScanKey = myRecord?.scans[session.currentScan - 1]?.uniqueScanKey;
+
 
   useEffect(() => {
     if (session.status === 'active' && session.lat && session.lng && session.radius) {
@@ -139,6 +140,8 @@ export function StudentDashboard() {
     setScannedData(null);
     setIsLoading(false);
     setCapturedImage(null);
+    setIsCapturing(false);
+    setCaptureCountdown(null);
     if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
@@ -156,21 +159,17 @@ export function StudentDashboard() {
       return;
     }
 
-    if (attendanceMode === 'hostel' && session.isSelfieRequired) {
-        await processHostelCheckin(result);
-    } else {
-        setIsLoading(true);
-        const deviceId = getDeviceId();
-        
-        await markAttendance({
-          studentId: userProfile.uid,
-          code: result,
-          deviceId,
-          photoURLs: capturedImage ? [capturedImage] : undefined,
-        });
-        
-        resetScanner();
-    }
+    setIsLoading(true);
+    const deviceId = getDeviceId();
+    
+    await markAttendance({
+      studentId: userProfile.uid,
+      code: result,
+      deviceId,
+      photoURLs: capturedImage ? [capturedImage] : undefined,
+    });
+    
+    resetScanner();
   };
   
   const handleScanResult = (result: any) => {
@@ -272,7 +271,12 @@ export function StudentDashboard() {
     return (
       <div className="text-center space-y-4">
         <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge> for {getScanLabel(session.currentScan)}</div>
-        <p className="text-muted-foreground">Scan the QR code to mark your attendance.</p>
+        <p className="text-muted-foreground">
+          {attendanceMode === 'class' 
+            ? "Scan the QR code to mark your attendance."
+            : "Use your unique key and take selfies to mark attendance."
+          }
+        </p>
         {record.scans[0].status === 'absent' && session.currentScan > 1 && !record.correctionRequest && (
             <Button variant="secondary" onClick={() => setShowCorrectionDialog(true)}>Request Correction</Button>
         )}
@@ -283,11 +287,20 @@ export function StudentDashboard() {
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
     if(myRecord.correctionRequest?.status === 'pending' || myRecord.correctionRequest?.status === 'denied') return false;
-    
     if(isInRange === false) return false;
 
-    return session.status === 'active' && myRecord.scans[session.currentScan - 1]?.status === 'absent';
+    // This logic is now for the CLASS mode button
+    return attendanceMode === 'class' && session.status === 'active' && myRecord.scans[session.currentScan - 1]?.status === 'absent';
   }
+
+  const shouldShowHostelButton = () => {
+     if (!isClient || !myRecord) return false;
+     if(myRecord.correctionRequest?.status === 'pending' || myRecord.correctionRequest?.status === 'denied') return false;
+     if(isInRange === false) return false;
+     
+     return attendanceMode === 'hostel' && session.status === 'active' && myRecord.scans[session.currentScan - 1]?.status === 'absent';
+  }
+
 
   const handleScanButtonClick = async () => {
       try {
@@ -300,17 +313,21 @@ export function StudentDashboard() {
       }
   }
 
-  const processHostelCheckin = async (code: string) => {
-    if (!userProfile || isInRange === false) return;
-    setIsLoading(true);
-    
-    // The code is valid, now we just need to take pictures.
-    // The markAttendance call will happen after picture capture.
-    toast({ title: "Check-in confirmed!", description: "Now, please take your selfie."});
-    setIsLoading(false);
-    // Do not reset the scanner, keep it open for selfie capture.
-    // The scannedData state is already set by handleScanResult.
-  }
+  const handleHostelCheckin = async () => {
+      if (!userProfile || isInRange === false) return;
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        stream.getTracks().forEach(track => track.stop()); // We'll re-request it inside the scanner/capture view
+        setHasCameraPermission(true);
+      } catch (error) {
+         handleError(error as Error);
+         return; // Don't proceed if no camera permission
+      }
+
+      setShowScanner(true); // This will now open the selfie capture view
+      startCaptureSequence();
+  };
   
   const takePicture = (): string | null => {
     const video = videoRef.current;
@@ -328,7 +345,24 @@ export function StudentDashboard() {
   };
 
   const startCaptureSequence = async () => {
-    if (!userProfile || !scannedData) return;
+    if (!userProfile || !uniqueScanKey) return;
+    setIsLoading(true);
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            // Wait for video to be ready
+            await new Promise(resolve => {
+                if (videoRef.current) videoRef.current.onloadedmetadata = resolve;
+            });
+        }
+    } catch (error) {
+        handleError(error as Error);
+        resetScanner();
+        return;
+    }
+
     setIsCapturing(true);
     const capturedImages: string[] = [];
 
@@ -347,17 +381,15 @@ export function StudentDashboard() {
         await new Promise(resolve => setTimeout(resolve, 500)); // Delay between shots
     }
     
-    setIsLoading(true);
-    const deviceId = getDeviceId();
+    setCapturedImage(capturedImages[0]); // Show preview
     
     await markAttendance({
         studentId: userProfile.uid,
-        code: scannedData,
-        deviceId,
+        code: uniqueScanKey,
+        deviceId: getDeviceId(),
         photoURLs: capturedImages
     });
 
-    setCapturedImage(capturedImages[0]);
     setIsCapturing(false);
     setIsLoading(false);
     toast({ title: 'Selfies Captured!', description: 'Your attendance has been recorded with your photos.'});
@@ -369,7 +401,7 @@ export function StudentDashboard() {
 
 
   const renderScannerContent = () => {
-    if (isLoading) {
+    if (isLoading && !isCapturing) {
       return (
         <div className="flex flex-col items-center justify-center h-48">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -377,86 +409,63 @@ export function StudentDashboard() {
         </div>
       );
     }
+    
+    // Logic for CLASS MODE QR Scanner
+    if (attendanceMode === 'class') {
+       return (
+          <>
+            {scannedData ? (
+              <div className="flex flex-col items-center justify-center h-48">
+                <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                <p className="text-lg font-semibold">QR Code Scanned!</p>
+              </div>
+            ) : hasCameraPermission && (
+              <>
+                <p className="text-sm text-green-600 font-semibold mb-2">Point your camera at the QR code.</p>
+                <Scanner
+                  onScan={handleScanResult}
+                  onError={handleError}
+                  components={{ audio: false, finder: true }}
+                  options={{ delayBetweenScanAttempts: 500, delayBetweenScanSuccess: 1000 }}
+                />
+              </>
+            )}
+            <div className="flex w-full gap-2 mt-4">
+              <Button onClick={resetScanner} className="w-full" variant="outline" disabled={isLoading}>Cancel</Button>
+            </div>
+          </>
+      );
+    }
 
-    if (attendanceMode === 'hostel' && session.isSelfieRequired) {
-      return renderHostelSelfieContent();
+    // Logic for HOSTEL MODE Selfie Capture
+    if (attendanceMode === 'hostel') {
+       return (
+         <div className="relative">
+            <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+            <canvas ref={canvasRef} className="hidden" />
+
+            {isCapturing && captureCountdown !== null && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <p className="text-8xl font-bold text-white">{captureCountdown}</p>
+                </div>
+            )}
+            
+            {capturedImage && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
+                    <img src={capturedImage} alt="Captured selfie" className="h-32 w-auto rounded-lg border-2 border-primary" />
+                    <p className="text-white mt-4 font-semibold">Attendance Recorded!</p>
+                </div>
+            )}
+
+             <div className="flex w-full gap-2 mt-4">
+              <Button onClick={resetScanner} className="w-full" variant="outline">Cancel</Button>
+            </div>
+         </div>
+      );
     }
     
-    return renderDefaultScannerContent();
+    return null;
   }
-
-  const renderDefaultScannerContent = () => (
-    <>
-      {scannedData ? (
-        <div className="flex flex-col items-center justify-center h-48">
-          <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-          <p className="text-lg font-semibold">QR Code Scanned!</p>
-          <p className="text-muted-foreground">Click Done to confirm.</p>
-        </div>
-      ) : hasCameraPermission && (
-        <>
-          <p className="text-sm text-green-600 font-semibold mb-2">Point your camera at the QR code.</p>
-          <Scanner
-            onScan={handleScanResult}
-            onError={handleError}
-            components={{ audio: false, finder: true }}
-            options={{ delayBetweenScanAttempts: 500, delayBetweenScanSuccess: 1000 }}
-          />
-        </>
-      )}
-      <div className="flex w-full gap-2 mt-4">
-        <Button onClick={resetScanner} className="w-full" variant="outline" disabled={isLoading}>Cancel</Button>
-      </div>
-    </>
-  );
-
-  const renderHostelSelfieContent = () => (
-     <div className="relative">
-      {!scannedData ? (
-         <>
-          <p className="text-sm text-green-600 font-semibold mb-2">Scan the QR code to begin check-in.</p>
-          <Scanner
-            onScan={handleScanResult}
-            onError={handleError}
-            components={{ audio: false, finder: true }}
-            options={{ delayBetweenScanAttempts: 500, delayBetweenScanSuccess: 1000 }}
-          />
-          <Button onClick={resetScanner} className="w-full mt-4" variant="outline">Cancel</Button>
-         </>
-      ) : (
-        <>
-          <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
-          <canvas ref={canvasRef} className="hidden" />
-
-          {isCapturing && captureCountdown !== null && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <p className="text-8xl font-bold text-white">{captureCountdown}</p>
-              </div>
-          )}
-          
-          {capturedImage && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
-                  <img src={capturedImage} alt="Captured selfie" className="h-32 w-auto rounded-lg border-2 border-primary" />
-                  <p className="text-white mt-4 font-semibold">Attendance Recorded!</p>
-              </div>
-          )}
-
-          {!isCapturing && !capturedImage && (
-            <div className="mt-4">
-              <p className="text-sm text-center text-muted-foreground mb-2">QR Code accepted. Position your face in the camera and take your pictures.</p>
-              <Button onClick={startCaptureSequence} className="w-full" size="lg">
-                  <Camera className="mr-2" /> Take 3 Pictures
-              </Button>
-            </div>
-          )}
-          
-          <div className="flex w-full gap-2 mt-4">
-              <Button onClick={resetScanner} className="w-full" variant="outline">Cancel</Button>
-          </div>
-        </>
-      )}
-     </div>
-  );
 
 
   return (
@@ -529,22 +538,32 @@ export function StudentDashboard() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
-            {shouldShowScannerButton() && (
-              <>
-                {showScanner ? (
-                  <div className="w-full max-w-sm mx-auto text-center">
+            {showScanner ? (
+                <div className="w-full max-w-sm mx-auto text-center">
                     {renderScannerContent()}
-                  </div>
-                ) : (
+                </div>
+            ) : (
+              <>
+                {shouldShowScannerButton() && (
                   <Button onClick={handleScanButtonClick} size="lg" disabled={isLoading || isInRange === false}>
-                    {attendanceMode === 'hostel' && session.isSelfieRequired 
-                      ? <><QrCode className="mr-2 h-5 w-5" />Scan to Start Check-in</>
-                      : <><QrCode className="mr-2 h-5 w-5" />Scan QR Code for {getScanLabel(session.currentScan)}</>
-                    }
+                    <QrCode className="mr-2 h-5 w-5" />Scan QR Code for {getScanLabel(session.currentScan)}
                   </Button>
+                )}
+
+                {shouldShowHostelButton() && (
+                  <div className="text-center space-y-4">
+                    <div className="bg-muted p-4 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Your unique key for this scan is:</p>
+                      <p className="font-mono text-3xl font-bold tracking-widest text-primary">{uniqueScanKey}</p>
+                    </div>
+                    <Button onClick={handleHostelCheckin} size="lg" disabled={isLoading || isInRange === false}>
+                      <Camera className="mr-2 h-5 w-5" /> Mark Attendance & Take Selfies
+                    </Button>
+                  </div>
                 )}
               </>
             )}
+            
             {session.status === 'active' && isInRange === false && !locationError &&
              <Alert variant="destructive">
                 <AlertTitle>You are out of range</AlertTitle>

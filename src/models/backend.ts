@@ -31,7 +31,7 @@ export interface AttendanceSession {
     lat: number;
     lng: number;
     radius: number; // Allowed radius in meters.
-    lateAfterMinutes: number; // For first scan
+    lateAfterMinutes?: number; // For first scan
     secondScanLateAfterMinutes?: number; // For second scan
     thirdScanLateAfterMinutes?: number; // For third scan
     subject?: string; // The subject of the class session
@@ -48,6 +48,7 @@ export interface ScanData {
     minutesLate: number;
     deviceId?: string;
     photoURLs?: string[]; // URLs of the captured selfies for this scan.
+    uniqueScanKey?: string; // A unique, one-time key for a specific student's scan in hostel mode.
 }
 
 /**

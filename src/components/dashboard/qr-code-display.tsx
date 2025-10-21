@@ -6,12 +6,30 @@ import { getScanLabel } from '@/lib/utils';
 import Image from 'next/image';
 
 export function QrCodeDisplay() {
-  const { session } = useStore();
+  const { session, attendanceMode } = useStore();
 
   if (session.status !== 'active') {
     return null;
   }
 
+  // For Hostel mode, show a simple PIN instead of a QR code
+  if (attendanceMode === 'hostel') {
+    return (
+      <Card className="flex flex-col items-center justify-center p-6 bg-card min-h-[360px]">
+        <CardHeader className="text-center p-2">
+          <CardTitle>Hostel Session PIN</CardTitle>
+          <CardDescription>This is a verification PIN for the current session.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-4 p-2">
+          <div className="text-center">
+            <p className="font-mono text-5xl font-bold tracking-widest text-primary animate-pulse">{session.readableCode}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // For Class mode, show the QR code as before
   return (
     <Card className="flex flex-col items-center justify-center p-6 bg-card">
       <CardHeader className="text-center p-2">

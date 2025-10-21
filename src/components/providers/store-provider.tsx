@@ -46,7 +46,7 @@ export type Session = {
 
 type MarkAttendancePayload = {
     studentId: string;
-    code: string;
+    code: string; // For class mode, this is QR code data. For hostel mode, this is the uniqueScanKey.
     deviceId: string;
     photoURLs?: string[];
 };
@@ -63,7 +63,7 @@ type StartSessionPayload = {
 type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
-  students: UserProfile[];
+  usersForSession: UserProfile[];
   startSession: (payload: StartSessionPayload) => Promise<void>;
   endSession: () => void;
   markAttendance: (payload: MarkAttendancePayload) => Promise<void>;
@@ -82,7 +82,7 @@ function useUsers(attendanceMode: AttendanceMode) {
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         
-        const baseQuery = query(collection(firestore, 'users'), where('role', '==', 'viewer'));
+        const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
         if (attendanceMode === 'class') {
             return query(baseQuery, where('userType', 'in', ['student', 'both']));
@@ -103,7 +103,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
   const [attendanceMode, setAttendanceMode] = useState<AttendanceMode>('class');
-  const { users: students, isLoading: areStudentsLoading } = useUsers(attendanceMode);
+  const { users: allUsersInMode, isLoading: areUsersLoading } = useUsers(attendanceMode);
 
 
   const sessionDocRef = useMemoFirebase(() => {
@@ -137,10 +137,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
   
   const usersForSession = useMemo(() => {
-    if(userProfile?.role === 'admin') return students;
-    if(userProfile?.role === 'viewer') return [userProfile];
+    // For admins, return all users in the current mode.
+    // For students/residents, just return their own profile.
+    if (userProfile?.role === 'admin') return allUsersInMode;
+    if (userProfile?.role === 'viewer') return allUsersInMode.filter(u => u.uid === userProfile.uid);
     return [];
-  }, [userProfile, students]);
+  }, [userProfile, allUsersInMode]);
 
 
   // Effect to sync local session state from the main session document
@@ -214,55 +216,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
-    if (session.status !== 'active') return;
+    if (session.status !== 'active' || areUsersLoading) return;
 
-    const usersToProcess = userProfile?.role === 'admin' ? students : (userProfile ? [userProfile] : []);
-
-    if (usersToProcess.length > 0) {
-      const newAttendance = new Map<string, AttendanceRecord>();
-      const newDevices = new Map<number, Set<string>>();
-      
-      for (let i = 1; i <= (session.totalScans || 3); i++) {
-          newDevices.set(i, new Set());
-      }
-
-      usersToProcess.forEach(student => {
-          const liveRecordData = liveRecords?.find(r => r.id === student.uid);
-          if (liveRecordData) {
-               const hydratedRecord: AttendanceRecord = {
-                  student: liveRecordData.student,
-                  scans: liveRecordData.scans.map((scan: any) => ({
-                      ...scan,
-                      timestamp: scan.timestamp ? new Date(scan.timestamp.seconds ? scan.timestamp.seconds * 1000 : scan.timestamp) : null
-                  })),
-                  finalStatus: liveRecordData.finalStatus,
-                  correctionRequest: liveRecordData.correctionRequest
-              };
-              newAttendance.set(student.uid, hydratedRecord);
-
-              hydratedRecord.scans.forEach((scan, index) => {
-                  if (scan.status !== 'absent' && scan.deviceId) {
-                      newDevices.get(index + 1)?.add(scan.deviceId);
-                  }
-              });
-
-          } else {
-               const defaultRecord: AttendanceRecord = {
-                  student,
-                  scans: Array.from({ length: session.totalScans || 2 }, () => ({
-                      status: 'absent',
-                      timestamp: null,
-                      minutesLate: 0,
-                  })),
-                  finalStatus: 'absent'
-              };
-              newAttendance.set(student.uid, defaultRecord);
-          }
-      });
-      setAttendance(newAttendance);
-      setDevicesInUse(newDevices);
+    const newAttendance = new Map<string, AttendanceRecord>();
+    const newDevices = new Map<number, Set<string>>();
+    
+    for (let i = 1; i <= (session.totalScans || 3); i++) {
+        newDevices.set(i, new Set());
     }
-  }, [liveRecords, students, session.totalScans, session.status, userProfile]);
+
+    usersForSession.forEach(student => {
+        const liveRecordData = liveRecords?.find(r => r.id === student.uid);
+        if (liveRecordData) {
+              const hydratedRecord: AttendanceRecord = {
+                student: liveRecordData.student,
+                scans: liveRecordData.scans.map((scan: any) => ({
+                    ...scan,
+                    timestamp: scan.timestamp ? new Date(scan.timestamp.seconds ? scan.timestamp.seconds * 1000 : scan.timestamp) : null
+                })),
+                finalStatus: liveRecordData.finalStatus,
+                correctionRequest: liveRecordData.correctionRequest
+            };
+            newAttendance.set(student.uid, hydratedRecord);
+
+            hydratedRecord.scans.forEach((scan, index) => {
+                if (scan.status !== 'absent' && scan.deviceId) {
+                    newDevices.get(index + 1)?.add(scan.deviceId);
+                }
+            });
+
+        } else {
+              const defaultRecord: AttendanceRecord = {
+                student,
+                scans: Array.from({ length: session.totalScans || 2 }, () => ({
+                    status: 'absent',
+                    timestamp: null,
+                    minutesLate: 0,
+                })),
+                finalStatus: 'absent'
+            };
+            newAttendance.set(student.uid, defaultRecord);
+        }
+    });
+    setAttendance(newAttendance);
+    setDevicesInUse(newDevices);
+    
+  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -281,7 +280,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
     }
-    if (!firestore || !userProfile || !sessionDocRef || students.length === 0) {
+    if (!firestore || !userProfile || !sessionDocRef || allUsersInMode.length === 0) {
         toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure residents are loaded and you have permissions.' });
         return;
     }
@@ -302,11 +301,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             totalScans: payload.totalScans,
             currentScan: 1,
             radius: payload.radius,
-            isSelfieRequired: payload.isSelfieRequired,
           };
           
           if (attendanceMode === 'class') {
             sessionData.lateAfterMinutes = payload.lateAfterMinutes;
+          } else { // Hostel mode
+            sessionData.isSelfieRequired = payload.isSelfieRequired;
           }
     
           if (payload.totalScans >= 2) {
@@ -319,8 +319,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const batch = writeBatch(firestore);
           batch.set(sessionDocRef, sessionData);
     
-          students.forEach(student => {
+          allUsersInMode.forEach(student => {
               const recordRef = doc(firestore, 'sessions', `${attendanceMode}-current`, 'records', student.uid);
+              
+              const scans = Array.from({ length: payload.totalScans }, () => {
+                  const scanData: Partial<ScanData> = {
+                      status: 'absent',
+                      timestamp: null,
+                      minutesLate: 0,
+                  };
+                  // If hostel mode, generate a unique key for the first scan
+                  if (attendanceMode === 'hostel') {
+                      scanData.uniqueScanKey = Math.random().toString(36).substring(2, 12).toUpperCase();
+                  }
+                  return scanData;
+              });
+
               const initialRecord = {
                   student: {
                     uid: student.uid,
@@ -330,11 +344,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     roll: student.roll,
                     userType: student.userType
                   }, 
-                  scans: Array.from({ length: payload.totalScans }, () => ({
-                      status: 'absent',
-                      timestamp: null,
-                      minutesLate: 0,
-                  })),
+                  scans,
                   finalStatus: 'absent',
               };
               batch.set(recordRef, initialRecord);
@@ -353,7 +363,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           reject(error);
       });
     });
-  }, [toast, firestore, userProfile, sessionDocRef, students, attendanceMode]);
+  }, [toast, firestore, userProfile, sessionDocRef, allUsersInMode, attendanceMode]);
   
  const endSession = useCallback(async () => {
     if (!sessionDocRef || !dbSession || !firestore) return;
@@ -392,6 +402,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Clean up undefined optional fields before archiving
         if (sessionToArchive.secondKey === undefined) delete sessionToArchive.secondKey;
         if (sessionToArchive.thirdKey === undefined) delete sessionToArchive.thirdKey;
+        if (sessionToArchive.subject === undefined) delete sessionToArchive.subject;
+        if (sessionToArchive.lateAfterMinutes === undefined) delete sessionToArchive.lateAfterMinutes;
+        if (sessionToArchive.secondScanLateAfterMinutes === undefined) delete sessionToArchive.secondScanLateAfterMinutes;
+        if (sessionToArchive.thirdScanLateAfterMinutes === undefined) delete sessionToArchive.thirdScanLateAfterMinutes;
 
 
         archiveBatch.set(archiveSessionRef, sessionToArchive);
@@ -454,12 +468,20 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
     }
     const studentRecord = studentRecordSnap.data();
     const currentScanIndex = session.currentScan - 1;
+    const currentScanData = studentRecord.scans[currentScanIndex];
 
-    const { readableCode: receivedCode } = parseQrCodeValue(code);
-
-    if (receivedCode.toUpperCase() !== session.readableCode.toUpperCase()) {
-        toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect for the current scan.' });
-        return;
+    // Check if code is valid
+    if (attendanceMode === 'class') {
+      const { readableCode: receivedCode } = parseQrCodeValue(code);
+      if (receivedCode.toUpperCase() !== session.readableCode.toUpperCase()) {
+          toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect for the current scan.' });
+          return;
+      }
+    } else { // Hostel Mode
+        if (code !== currentScanData.uniqueScanKey) {
+             toast({ variant: 'destructive', title: 'Invalid Key', description: 'The attendance key is incorrect.' });
+             return;
+        }
     }
     
     if (devicesInUse.get(session.currentScan)?.has(deviceId)) {
@@ -467,7 +489,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
         return;
     }
 
-    if (studentRecord.scans[currentScanIndex]?.status !== 'absent') {
+    if (currentScanData?.status !== 'absent') {
         toast({ title: 'Already Scanned', description: `You have already completed Scan ${session.currentScan}.` });
         return;
     }
@@ -489,6 +511,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
     
     const updatedScans = [...studentRecord.scans];
     const scanUpdate: Partial<ScanData> = {
+        ...currentScanData,
         status,
         minutesLate,
         timestamp: now.toISOString(),
@@ -500,7 +523,6 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
         const uploadedURLs = await Promise.all(
           photoURLs.map(dataUrl => uploadImageAndGetURL(dataUrl, studentId))
         );
-        // Correctly use photoURLs as per the schema
         scanUpdate.photoURLs = uploadedURLs;
       } catch (error) {
         toast({ variant: 'destructive', title: 'Image Upload Failed', description: (error as Error).message });
@@ -508,7 +530,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
       }
     }
     
-    updatedScans[currentScanIndex] = scanUpdate;
+    updatedScans[currentScanIndex] = scanUpdate as ScanData;
     
     updateDocumentNonBlocking(studentDocRef, { scans: updatedScans });
     toast({ title: `Scan ${session.currentScan} Completed!`, description: `You are marked as ${status.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}.` });
@@ -533,12 +555,28 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
         else if (nextScanNumber === 3) keyFieldToUpdate = 'thirdKey';
         else return;
         
-        const updatePayload = { 
+        const updatePayload: any = { 
             currentScan: nextScanNumber,
             [keyFieldToUpdate]: qrCodeValue
         };
         
-        await updateDocumentNonBlocking(sessionDocRef, updatePayload);
+        const batch = writeBatch(firestore);
+        batch.update(sessionDocRef, updatePayload);
+
+        // For hostel mode, generate new unique keys for the next scan
+        if (attendanceMode === 'hostel') {
+          const recordsSnapshot = await getDocs(collection(firestore, `sessions/${attendanceMode}-current/records`));
+          recordsSnapshot.forEach(recordDoc => {
+            const recordData = recordDoc.data();
+            const updatedScans = [...recordData.scans];
+            if (updatedScans[nextScanNumber - 1]) {
+              updatedScans[nextScanNumber - 1].uniqueScanKey = Math.random().toString(36).substring(2, 12).toUpperCase();
+            }
+            batch.update(recordDoc.ref, { scans: updatedScans });
+          });
+        }
+
+        await batch.commit();
         
         toast({ title: `Scan ${nextScanNumber} Activated`, description: 'Residents must scan again to continue.' });
 
@@ -546,7 +584,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
         toast({ variant: 'destructive', title: 'Activation Failed', description: 'Could not activate the next scan.' });
         console.error("Failed to activate next scan:", error);
     }
-  }, [firestore, dbSession, toast, sessionDocRef]);
+  }, [firestore, dbSession, toast, sessionDocRef, attendanceMode]);
 
   const requestCorrection = useCallback(async(studentId: string, reason: string) => {
     if (!firestore || session.status !== 'active') {
@@ -600,7 +638,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
 
   const value = useMemo(() => ({
     session,
-    students: usersForSession, 
+    usersForSession, 
     attendance,
     startSession,
     endSession,
