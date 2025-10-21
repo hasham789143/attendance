@@ -80,14 +80,13 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
     
-    // For admins, fetch all non-admin users. For others, just fetch their own profile.
     const usersQuery = useMemoFirebase(() => {
         if (!firestore || !userProfile) return null;
         
+        // For admins, fetch all non-admin users. For others, just fetch their own profile.
         const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
         if (userProfile?.role === 'admin') {
-           // This is stable and does not depend on attendanceMode, which prevents loops.
            return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
         }
         
@@ -105,12 +104,12 @@ function useUsers(userProfile: UserProfile | null) {
 export function StoreProvider({ children, userProfile }: { children: ReactNode, userProfile: UserProfile | null }) {
   const { toast } = useToast();
   const { firestore } = useFirebase();
-  const [attendanceMode, setAttendanceModeState] = useState<AttendanceMode>('class');
+  const [attendanceMode, setAttendanceMode] = useState<AttendanceMode>('class');
   const { users: allUsers, isLoading: areUsersLoading } = useUsers(userProfile);
 
 
   const sessionDocRef = useMemoFirebase(() => {
-    if (!firestore || !userProfile) return null; // Wait for user profile
+    if (!firestore || !userProfile) return null;
     return doc(firestore, 'sessions', `${attendanceMode}-current`);
   }, [firestore, attendanceMode, userProfile]);
 
@@ -118,9 +117,9 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
 
   // Live attendance records from Firestore
   const liveRecordsQuery = useMemoFirebase(() => {
-    if (!firestore || !dbSession) return null;
+    if (!firestore || !dbSession || !userProfile) return null;
     return collection(firestore, 'sessions', `${attendanceMode}-current`, 'records');
-  }, [firestore, dbSession, attendanceMode]);
+  }, [firestore, dbSession, attendanceMode, userProfile]);
 
   const { data: liveRecords } = useCollection<any>(liveRecordsQuery);
   
@@ -139,8 +138,8 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
   const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
   
-  const setAttendanceMode = useCallback((mode: AttendanceMode) => {
-    setAttendanceModeState(mode);
+  const handleSetAttendanceMode = useCallback((mode: AttendanceMode) => {
+    setAttendanceMode(mode);
   }, []);
 
   const usersForSession = useMemo(() => {
@@ -217,9 +216,8 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
           radius: 100,
           isSelfieRequired: false,
         });
-        setAttendance(new Map());
     }
-  }, [dbSession, session.status]);
+  }, [dbSession]);
 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
@@ -696,7 +694,7 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
     requestCorrection,
     handleCorrectionRequest,
     attendanceMode,
-    setAttendanceMode,
+    setAttendanceMode: handleSetAttendanceMode,
   }), [
     session,
     usersForSession,
@@ -709,7 +707,7 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
     requestCorrection,
     handleCorrectionRequest,
     attendanceMode,
-    setAttendanceMode,
+    handleSetAttendanceMode,
   ]);
 
 
@@ -727,3 +725,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
