@@ -110,9 +110,9 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
 
 
   const sessionDocRef = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !userProfile) return null; // Wait for user profile
     return doc(firestore, 'sessions', `${attendanceMode}-current`);
-  }, [firestore, attendanceMode]);
+  }, [firestore, attendanceMode, userProfile]);
 
   const { data: dbSession } = useDoc<AttendanceSession>(sessionDocRef);
 
@@ -727,4 +727,3 @@ export const useStore = () => {
   }
   return context;
 };
-
