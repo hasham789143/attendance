@@ -79,13 +79,13 @@ export function StudentDashboard() {
 
   useEffect(() => {
     setIsClient(true);
-    // If user is not 'both', ensure they are in the correct mode to avoid re-renders.
-    if (userProfile?.userType === 'student') {
+    // This effect ensures that users who are not 'both' are always in their correct mode.
+    if (userProfile?.userType === 'student' && attendanceMode !== 'class') {
         setAttendanceMode('class');
-    } else if (userProfile?.userType === 'resident') {
+    } else if (userProfile?.userType === 'resident' && attendanceMode !== 'hostel') {
         setAttendanceMode('hostel');
     }
-  }, [userProfile, setAttendanceMode]);
+  }, [userProfile, attendanceMode, setAttendanceMode]);
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
@@ -329,12 +329,12 @@ export function StudentDashboard() {
         code: myRecord?.scans[session.currentScan - 1]?.uniqueScanKey || '', 
         deviceId: getDeviceId(),
     });
+    
+    setIsLoading(false);
 
     if (success && session.isSelfieRequired) {
         setShowScanner(true);
         startCaptureSequence();
-    } else {
-        setIsLoading(false);
     }
   }
 
@@ -366,6 +366,7 @@ export function StudentDashboard() {
   };
 
   const startCaptureSequence = async () => {
+    setShowScanner(true);
     setIsCapturing(true);
     const images: string[] = [];
 
@@ -386,7 +387,6 @@ export function StudentDashboard() {
     
     setCapturedImages(images);
     setIsCapturing(false);
-    setIsLoading(false); // Finished with the capture part of the process
   };
 
 
@@ -461,7 +461,7 @@ export function StudentDashboard() {
     if (attendanceMode === 'hostel' && session.isSelfieRequired && currentScanData?.status !== 'absent' && !currentScanData?.photoURLs) {
       return (
         <div className="w-full max-w-sm mx-auto text-center">
-           <Button onClick={() => { setShowScanner(true); startCaptureSequence(); }} size="lg" disabled={isLoading || isCapturing}>
+           <Button onClick={startCaptureSequence} size="lg" disabled={isLoading || isCapturing}>
                 <Camera className="mr-2 h-5 w-5" />
                 Take Selfies for Verification
             </Button>
@@ -576,5 +576,3 @@ export function StudentDashboard() {
     </div>
   );
 }
-
-    

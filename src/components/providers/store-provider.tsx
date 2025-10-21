@@ -79,19 +79,29 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 function useUsers(attendanceMode: AttendanceMode) {
     const { firestore } = useFirebase();
+    const { userProfile } = useAuth();
 
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         
-        const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled', 'admin']));
+        let baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
-        if (attendanceMode === 'class') {
-            return query(baseQuery, where('userType', 'in', ['student', 'both']));
-        } else { // hostel mode
+        // Admins should fetch all users relevant to the mode
+        if (userProfile?.role === 'admin') {
+            if (attendanceMode === 'class') {
+                return query(baseQuery, where('userType', 'in', ['student', 'both']));
+            }
             return query(baseQuery, where('userType', 'in', ['resident', 'both']));
         }
+        
+        // Viewers should only fetch their own profile
+        if (userProfile) {
+           return query(baseQuery, where('uid', '==', userProfile.uid));
+        }
 
-    }, [firestore, attendanceMode]);
+        return null; // No user, no query
+
+    }, [firestore, attendanceMode, userProfile]);
 
     const { data: users, isLoading } = useCollection<UserProfile>(usersQuery);
 
@@ -138,10 +148,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
   
   const usersForSession = useMemo(() => {
-    const filteredUsers = allUsersInMode.filter(u => u.role !== 'admin');
-    if (userProfile?.role === 'admin') return filteredUsers;
-    if (userProfile?.role === 'viewer') return allUsersInMode.filter(u => u.uid === userProfile.uid);
-    return [];
+    if (userProfile?.role === 'admin') return allUsersInMode;
+    // For non-admins, usersForSession is just themselves
+    return allUsersInMode.filter(u => u.uid === userProfile?.uid);
   }, [userProfile, allUsersInMode]);
   
   const setAttendanceMode = useCallback((mode: AttendanceMode) => {
@@ -288,7 +297,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
     }
-    if (!firestore || !userProfile || !sessionDocRef || usersForSession.length === 0) {
+    const usersToEnroll = allUsersInMode.filter(u => u.role !== 'admin');
+    if (!firestore || !userProfile || !sessionDocRef || usersToEnroll.length === 0) {
         toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure residents are loaded and you have permissions.' });
         return;
     }
@@ -327,16 +337,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const batch = writeBatch(firestore);
           batch.set(sessionDocRef, sessionData);
     
-          usersForSession.forEach(student => {
+          usersToEnroll.forEach(student => {
               const recordRef = doc(firestore, 'sessions', `${attendanceMode}-current`, 'records', student.uid);
               
-              const scans = Array.from({ length: payload.totalScans }, () => {
+              const scans = Array.from({ length: payload.totalScans }, (v, i) => {
                   const scanData: Partial<ScanData> = {
                       status: 'absent',
                       timestamp: null,
                       minutesLate: 0,
                   };
-                  // If hostel mode, generate a unique key for the first scan
+                  // If hostel mode, generate a unique key for each scan
                   if (attendanceMode === 'hostel') {
                       scanData.uniqueScanKey = Math.random().toString(36).substring(2, 12).toUpperCase();
                   }
@@ -371,7 +381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           reject(error);
       });
     });
-  }, [toast, firestore, userProfile, sessionDocRef, usersForSession, attendanceMode]);
+  }, [toast, firestore, userProfile, sessionDocRef, allUsersInMode, attendanceMode]);
   
  const endSession = useCallback(async () => {
     if (!sessionDocRef || !dbSession || !firestore) return;
@@ -682,7 +692,20 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
     handleCorrectionRequest,
     attendanceMode,
     setAttendanceMode,
-  }), [session, usersForSession, attendance, startSession, endSession, markAttendance, uploadSelfies, activateNextScan, requestCorrection, handleCorrectionRequest, attendanceMode, setAttendanceMode]);
+  }), [
+    session,
+    usersForSession,
+    attendance,
+    startSession,
+    endSession,
+    markAttendance,
+    uploadSelfies,
+    activateNextScan,
+    requestCorrection,
+    handleCorrectionRequest,
+    attendanceMode,
+    setAttendanceMode,
+  ]);
 
 
   return (
