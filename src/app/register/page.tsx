@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
@@ -8,11 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useFirebase, setDocumentNonBlocking } from '@/firebase';
+import { useFirebase, setDocumentNonBlocking, useDoc, useMemoFirebase } from '@/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -24,8 +26,21 @@ export default function RegisterPage() {
   const { toast } = useToast();
   const router = useRouter();
 
+  const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'attendance') : null, [firestore]);
+  const { data: settings, isLoading: settingsLoading } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
+  
+  const isRegistrationOpen = settings?.isRegistrationOpen ?? false;
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isRegistrationOpen) {
+        toast({
+            variant: 'destructive',
+            title: 'Registration Closed',
+            description: 'The administrator has disabled new registrations.',
+        });
+        return;
+    }
     if (!name || !email || !password) {
       toast({
         variant: 'destructive',
@@ -82,67 +97,82 @@ export default function RegisterPage() {
           <CardDescription>Join Class Guardian today.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleRegister} className="space-y-4">
-             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={loading}
-                required
-              />
+          {settingsLoading ? (
+            <div className="flex justify-center items-center h-40">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-             <div className="space-y-2">
-              <Label htmlFor="roll">Roll Number (Optional)</Label>
-              <Input
-                id="roll"
-                type="text"
-                placeholder="S2024001"
-                value={roll}
-                onChange={(e) => setRoll(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={loading}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="6+ characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Register
-            </Button>
-             <div className="text-center text-sm text-muted-foreground">
-              Already have an account?{' '}
-              <Link href="/login" className="underline hover:text-primary">
-                Login
-              </Link>
-            </div>
-          </form>
+          ) : !isRegistrationOpen ? (
+             <Alert variant="destructive">
+                <AlertTitle>Registration Closed</AlertTitle>
+                <AlertDescription>
+                    Registration is currently closed by the administrator. Please check back later or contact support if you believe this is an error.
+                </AlertDescription>
+            </Alert>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-4">
+               <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="John Doe"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+               <div className="space-y-2">
+                <Label htmlFor="roll">Room Number (Optional)</Label>
+                <Input
+                  id="roll"
+                  type="text"
+                  placeholder="A-101"
+                  value={roll}
+                  onChange={(e) => setRoll(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="6+ characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Register
+              </Button>
+               <div className="text-center text-sm text-muted-foreground">
+                Already have an account?{' '}
+                <Link href="/login" className="underline hover:text-primary">
+                  Login
+                </Link>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    

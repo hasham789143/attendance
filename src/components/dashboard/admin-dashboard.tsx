@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download, MailWarning, MapPin, AlarmClockCheck } from 'lucide-react';
+import { PlayCircle, StopCircle, ScanLine, Users, UserCheck, UserX, Clock, UserPlus, LogOut, Download, MailWarning, MapPin, AlarmClockCheck, Building, School } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Progress } from '../ui/progress';
 import { RegisterUserDialog } from './register-user-dialog';
@@ -19,6 +19,8 @@ import { ScanData } from '@/models/backend';
 import { CorrectionRequestDialog } from './correction-request-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from '../providers/translation-provider';
+import { Switch } from '../ui/switch';
+import { Label } from '../ui/label';
 
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
@@ -34,7 +36,8 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
       
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-      if (session.totalScans && scansCompleted < session.totalScans) return 'left_early';
+      // If any scan is still 'absent' but at least one is present, they left early
+      if (record.scans.some(s => s.status === 'absent')) return 'left_early';
       if (record.scans.some(s => s.status === 'late')) return 'late';
       return 'present';
   };
@@ -68,7 +71,6 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
     if (!session || session.totalScans < 2) return null;
 
     const missed: number[] = [];
-    // Only check for missed scans if at least one scan has been completed
     const hasAnyScan = record.scans.some(s => s.status !== 'absent');
     
     if (hasAnyScan) {
@@ -79,7 +81,6 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
         }
     }
     
-    // Don't show "Missed" if all scans were missed (that's just "Absent")
     if (missed.length > 0 && missed.length < session.totalScans) {
         return <span className="text-xs text-destructive">{t('dashboard.missedScans')}: {missed.map(m => getScanLabel(m, true, t)).join(', ')}</span>
     }
@@ -210,14 +211,14 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
 
 
 export function AdminDashboard() {
-  const { session, attendance, students, endSession, activateNextScan } = useStore();
+  const { session, attendance, students, endSession, activateNextScan, attendanceMode, setAttendanceMode } = useStore();
   const [filter, setFilter] = useState<'all' | 'present' | 'absent' | 'left_early'>('all');
   const { t } = useTranslation();
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-      if (session.totalScans && scansCompleted < session.totalScans) return 'left_early';
+       if (record.scans.some(s => s.status === 'absent')) return 'left_early';
       if (record.scans.some(s => s.status === 'late')) return 'late';
       return 'present';
   };
@@ -244,9 +245,19 @@ export function AdminDashboard() {
         <div className="flex items-center justify-between">
             <div>
                 <h1 className="text-2xl font-bold font-headline">{t('dashboard.adminTitle')}</h1>
-                <p className="text-muted-foreground">{t('dashboard.adminDescription')}</p>
+                <p className="text-muted-foreground">{attendanceMode === 'class' ? 'Class Attendance Mode' : 'Hostel Attendance Mode'}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
+                 <div className="flex items-center space-x-2">
+                    <School className={cn("h-6 w-6", attendanceMode === 'hostel' && 'text-muted-foreground')} />
+                    <Switch
+                        id="attendance-mode"
+                        checked={attendanceMode === 'hostel'}
+                        onCheckedChange={(checked) => setAttendanceMode(checked ? 'hostel' : 'class')}
+                        disabled={session.status === 'active'}
+                    />
+                    <Building className={cn("h-6 w-6", attendanceMode === 'class' && 'text-muted-foreground')} />
+                </div>
                  <RegisterUserDialog>
                     <Button size="lg" variant="outline">
                         <UserPlus className="mr-2 h-5 w-5" /> {t('dashboard.registerUser')}
@@ -376,3 +387,5 @@ export function AdminDashboard() {
 
 // Helper type
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
+
+    

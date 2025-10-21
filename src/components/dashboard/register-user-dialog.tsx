@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -179,3 +180,5 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
     </Dialog>
   );
 }
+
+    

@@ -1,8 +1,8 @@
 
 'use client';
-import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, MoreHorizontal, Pen, Trash2, UserCog, UserX, CheckCircle, Ban } from 'lucide-react';
 import { UserProfile } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
     const [name, setName] = useState(user.name);
@@ -81,6 +82,18 @@ export default function ResidentsPage() {
   const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
   const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  
+  const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'attendance') : null, [firestore]);
+  const { data: settings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
+  
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+  
+  useEffect(() => {
+    if (settings) {
+      setIsRegistrationOpen(settings.isRegistrationOpen);
+    }
+  }, [settings]);
+
 
   const residentsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -115,10 +128,30 @@ export default function ResidentsPage() {
     setUserToDelete(null);
   }
 
+  const handleToggleRegistration = (isOpen: boolean) => {
+    if (!settingsDocRef) return;
+    setIsRegistrationOpen(isOpen);
+    updateDocumentNonBlocking(settingsDocRef, { isRegistrationOpen: isOpen });
+    toast({
+      title: `Registration ${isOpen ? 'Enabled' : 'Disabled'}`,
+      description: `New users can ${isOpen ? '' : 'no longer'} register.`,
+    });
+  }
+
 
   return (
     <div>
-        <h1 className="text-2xl font-bold font-headline mb-4">Resident Management</h1>
+        <div className="flex items-center justify-between mb-4">
+             <h1 className="text-2xl font-bold font-headline">Resident Management</h1>
+             <div className="flex items-center space-x-2">
+                <Switch 
+                    id="registration-switch" 
+                    checked={isRegistrationOpen}
+                    onCheckedChange={handleToggleRegistration}
+                />
+                <Label htmlFor="registration-switch">Allow Registration</Label>
+            </div>
+        </div>
         <Card>
             <CardHeader>
                 <CardTitle>All Residents</CardTitle>
@@ -232,3 +265,5 @@ export default function ResidentsPage() {
     </div>
   );
 }
+
+    

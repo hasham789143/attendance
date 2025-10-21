@@ -263,17 +263,29 @@
       },
       "description": "Stores user profile information. The 'userId' is the Firebase Authentication UID."
     },
-    "/sessions/current": {
+    "/sessions/class-current": {
       "schema": {
         "$ref": "#/entities/AttendanceSession"
       },
-      "description": "Stores the current active attendance session. This is a single document."
+      "description": "Stores the current active class attendance session. This is a single document."
     },
-    "/sessions/current/records/{userId}": {
+    "/sessions/class-current/records/{userId}": {
       "schema": {
         "$ref": "#/entities/AttendanceRecord"
       },
-      "description": "Stores the live attendance records for each student in the currently active session."
+      "description": "Stores the live attendance records for each student in the currently active class session."
+    },
+     "/sessions/hostel-current": {
+      "schema": {
+        "$ref": "#/entities/AttendanceSession"
+      },
+      "description": "Stores the current active hostel attendance session. This is a single document."
+    },
+    "/sessions/hostel-current/records/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AttendanceRecord"
+      },
+      "description": "Stores the live attendance records for each resident in the currently active hostel session."
     },
     "/sessions/{sessionId}": {
       "schema": {
@@ -301,3 +313,5 @@
     }
   }
 }
+
+    

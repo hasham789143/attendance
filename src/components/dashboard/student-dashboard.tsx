@@ -216,19 +216,19 @@ export function StudentDashboard() {
         );
     }
 
-    if (scansCompleted > 0) {
-        return (
+    if (scansCompleted >= session.currentScan) {
+         return (
             <div className="text-center">
               <div className="text-lg">{getScanLabel(scansCompleted + 1)} of {session.totalScans} is next.</div>
-              <p className="text-muted-foreground">Please scan the next QR code when it is presented.</p>
+              <p className="text-muted-foreground">Please wait for the next QR code to be presented.</p>
             </div>
         );
     }
     
-    // Default to absent
+    // Default to absent for the current scan
     return (
       <div className="text-center space-y-4">
-        <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge></div>
+        <div className="text-lg">You are marked <Badge variant="destructive">Absent</Badge> for {getScanLabel(session.currentScan)}</div>
         <p className="text-muted-foreground">Scan the QR code to mark your attendance.</p>
         {record.scans[0].status === 'absent' && session.currentScan > 1 && !record.correctionRequest && (
             <Button variant="secondary" onClick={() => setShowCorrectionDialog(true)}>Request Correction</Button>
@@ -240,9 +240,12 @@ export function StudentDashboard() {
   const shouldShowScannerButton = () => {
     if (!isClient || !myRecord) return false;
     if(myRecord.correctionRequest?.status === 'pending' || myRecord.correctionRequest?.status === 'denied') return false;
-    const scansCompleted = myRecord.scans.filter(s => s.status !== 'absent').length;
+    
     // Only show if in range
-    return session.status === 'active' && isInRange && scansCompleted < session.totalScans && myRecord.scans[session.currentScan - 1]?.status === 'absent';
+    if(isInRange === false) return false;
+
+    // Check if the current scan is not yet completed
+    return session.status === 'active' && myRecord.scans[session.currentScan - 1]?.status === 'absent';
   }
 
   const handleScanButtonClick = async () => {

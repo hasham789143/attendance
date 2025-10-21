@@ -10,6 +10,7 @@ import { getDistance } from '@/lib/utils';
 import { AttendanceSession, ScanData } from '@/models/backend';
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
+export type AttendanceMode = 'class' | 'hostel';
 
 
 // This represents the live attendance record in the component's state.
@@ -56,6 +57,8 @@ type StoreContextType = {
   activateNextScan: () => void;
   requestCorrection: (studentId: string, reason: string) => void;
   handleCorrectionRequest: (studentId: string, approved: boolean) => void;
+  attendanceMode: AttendanceMode;
+  setAttendanceMode: (mode: AttendanceMode) => void;
 };
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -90,19 +93,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
   const { students, isLoading: areStudentsLoading } = useStudents();
+  const [attendanceMode, setAttendanceMode] = useState<AttendanceMode>('class');
 
   const sessionDocRef = useMemoFirebase(() => {
     if (!firestore) return null;
-    return doc(firestore, 'sessions', 'current');
-  }, [firestore]);
+    return doc(firestore, 'sessions', `${attendanceMode}-current`);
+  }, [firestore, attendanceMode]);
 
   const { data: dbSession } = useDoc<AttendanceSession>(sessionDocRef);
 
   // Live attendance records from Firestore
   const liveRecordsQuery = useMemoFirebase(() => {
     if (!firestore || !dbSession) return null;
-    return collection(firestore, 'sessions', 'current', 'records');
-  }, [firestore, dbSession]);
+    return collection(firestore, 'sessions', `${attendanceMode}-current`, 'records');
+  }, [firestore, dbSession, attendanceMode]);
 
   const { data: liveRecords } = useCollection<any>(liveRecordsQuery);
   
@@ -170,6 +174,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           radius: 100,
         });
         setAttendance(new Map());
+    } else {
+        // Ensure session is reset if dbSession becomes null and session was already inactive
+         setSession({
+          status: 'inactive', 
+          qrCodeValue: '',
+          readableCode: '',
+          startTime: null,
+          currentScan: 0,
+          totalScans: 0,
+          lateAfterMinutes: 0,
+          radius: 100,
+        });
+        setAttendance(new Map());
     }
   }, [dbSession]);
 
@@ -218,6 +235,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         setAttendance(newAttendance);
         setDevicesInUse(newDevices);
+    } else if (students.length > 0) {
+        // Initialize with default records if no live records exist yet for an active session
+         const newAttendance = new Map<string, AttendanceRecord>();
+          students.forEach(student => {
+             const defaultRecord: AttendanceRecord = {
+                student,
+                scans: Array.from({ length: session.totalScans || 2 }, () => ({
+                    status: 'absent',
+                    timestamp: null,
+                    minutesLate: 0,
+                })),
+                finalStatus: 'absent'
+            };
+            newAttendance.set(student.uid, defaultRecord);
+        });
+        setAttendance(newAttendance);
     }
   }, [liveRecords, students, session.totalScans]);
 
@@ -257,10 +290,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         totalScans: totalScans,
         currentScan: 1,
         lateAfterMinutes: lateAfterMinutes,
-        secondScanLateAfterMinutes: lateAfterMinutes,
         radius: radius,
       };
 
+      if (totalScans >= 2) {
+          sessionData.secondScanLateAfterMinutes = lateAfterMinutes;
+      }
       if (totalScans === 3) {
         sessionData.thirdScanLateAfterMinutes = lateAfterMinutes;
       }
@@ -269,7 +304,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       batch.set(sessionDocRef, sessionData);
 
       students.forEach(student => {
-          const recordRef = doc(firestore, 'sessions', 'current', 'records', student.uid);
+          const recordRef = doc(firestore, 'sessions', `${attendanceMode}-current`, 'records', student.uid);
           const initialRecord = {
               student: {
                 uid: student.uid,
@@ -295,7 +330,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }, (error) => {
         toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
     });
-  }, [toast, firestore, userProfile, sessionDocRef, students]);
+  }, [toast, firestore, userProfile, sessionDocRef, students, attendanceMode]);
   
  const endSession = useCallback(async () => {
     if (!sessionDocRef || !dbSession || !firestore) return;
@@ -305,17 +340,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         
         const archiveSessionRef = doc(collection(firestore, "sessions"));
         
-        const recordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
+        const recordsSnapshot = await getDocs(collection(firestore, 'sessions', `${attendanceMode}-current`, 'records'));
         recordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const scansCompleted = recordData.scans.filter((s: ScanData) => s.status !== 'absent').length;
             let finalStatus: AttendanceStatus = 'absent';
             
-            if (scansCompleted === recordData.scans.length) {
+            if (scansCompleted > 0 && scansCompleted < recordData.scans.length) {
+              finalStatus = 'left_early';
+            } else if (scansCompleted === recordData.scans.length) {
                 const isLate = recordData.scans.some((s: ScanData) => s.status === 'late');
                 finalStatus = isLate ? 'late' : 'present';
-            } else if (scansCompleted > 0) {
-                finalStatus = 'left_early';
             }
 
             batch.update(recordDoc.ref, { finalStatus });
@@ -341,7 +376,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         archiveBatch.set(archiveSessionRef, sessionToArchive);
         
-        const finalRecordsSnapshot = await getDocs(collection(firestore, 'sessions', 'current', 'records'));
+        const finalRecordsSnapshot = await getDocs(collection(firestore, 'sessions', `${attendanceMode}-current`, 'records'));
         finalRecordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
@@ -378,7 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         console.error("Failed to archive session:", error);
         toast({ variant: 'destructive', title: 'Error Ending Session', description: error.message || 'Could not archive records.' });
     }
-}, [sessionDocRef, dbSession, firestore, toast]);
+}, [sessionDocRef, dbSession, firestore, toast, attendanceMode]);
 
 
 const markAttendance = useCallback(async (studentId: string, code: string, deviceId: string) => {
@@ -387,7 +422,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
         return;
     }
     
-    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+    const studentDocRef = doc(firestore, `sessions/${attendanceMode}-current/records`, studentId);
     const studentRecordSnap = await getDoc(studentDocRef);
     if (!studentRecordSnap.exists()) {
         toast({ variant: 'destructive', title: 'Record not found', description: 'Your attendance record could not be found.' });
@@ -445,7 +480,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
     updateDocumentNonBlocking(studentDocRef, { scans: updatedScans });
     toast({ title: `Scan ${session.currentScan} Completed!`, description: `You are marked as ${status.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}.` });
 
-}, [session, firestore, devicesInUse, toast]);
+}, [session, firestore, devicesInUse, toast, attendanceMode]);
   
   
   const activateNextScan = useCallback(async () => {
@@ -483,7 +518,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
         toast({ variant: 'destructive', title: 'Session inactive', description: 'Cannot submit request for an inactive session.' });
         return;
     }
-    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+    const studentDocRef = doc(firestore, `sessions/${attendanceMode}-current/records`, studentId);
     
     const correctionRequest = {
         requestedAt: new Date().toISOString(),
@@ -494,11 +529,11 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
     updateDocumentNonBlocking(studentDocRef, { correctionRequest });
     toast({ title: 'Request Submitted', description: 'Your attendance correction request has been sent to the admin.' });
 
-  }, [firestore, session.status, toast]);
+  }, [firestore, session.status, toast, attendanceMode]);
 
   const handleCorrectionRequest = useCallback(async(studentId: string, approved: boolean) => {
     if (!firestore) return;
-    const studentDocRef = doc(firestore, 'sessions/current/records', studentId);
+    const studentDocRef = doc(firestore, `sessions/${attendanceMode}-current/records`, studentId);
 
     const studentRecordSnap = await getDoc(studentDocRef);
     if (!studentRecordSnap.exists()) return;
@@ -525,7 +560,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
 
     updateDocumentNonBlocking(studentDocRef, updateData);
 
-  }, [firestore, toast]);
+  }, [firestore, toast, attendanceMode]);
 
 
   const value = useMemo(() => ({
@@ -538,7 +573,9 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
     activateNextScan,
     requestCorrection,
     handleCorrectionRequest,
-  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection, handleCorrectionRequest]);
+    attendanceMode,
+    setAttendanceMode,
+  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection, handleCorrectionRequest, attendanceMode, setAttendanceMode]);
 
 
   return (
