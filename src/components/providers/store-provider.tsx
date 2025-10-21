@@ -4,8 +4,7 @@ import { useToast } from '@/hooks/use-toast.tsx';
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useMemo } from 'react';
 import { useAuth, UserProfile } from './auth-provider';
 import { collection, query, where, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
-import { useCollection, useDoc, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { getDistance } from '@/lib/utils';
+import { useCollection, useDoc, useFirebase, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { AttendanceSession, ScanData } from '@/models/backend';
 import { uploadImageAndGetURL } from '@/firebase/storage';
 
@@ -79,10 +78,9 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 function useUsers(attendanceMode: AttendanceMode) {
     const { firestore } = useFirebase();
-    const { userProfile } = useAuth();
 
     const usersQuery = useMemoFirebase(() => {
-        if (userProfile?.role !== 'admin' || !firestore) return null;
+        if (!firestore) return null;
         
         const baseQuery = query(collection(firestore, 'users'), where('role', '==', 'viewer'));
         
@@ -92,21 +90,11 @@ function useUsers(attendanceMode: AttendanceMode) {
             return query(baseQuery, where('userType', 'in', ['resident', 'both']));
         }
 
-    }, [userProfile, firestore, attendanceMode]);
+    }, [firestore, attendanceMode]);
 
-    const { data: allUsers, isLoading: areUsersLoading } = useCollection<UserProfile>(usersQuery);
+    const { data: users, isLoading } = useCollection<UserProfile>(usersQuery);
 
-    const usersList = useMemo(() => {
-        if (userProfile?.role === 'admin') {
-            return allUsers || [];
-        }
-        if (userProfile?.role === 'viewer') {
-            return userProfile ? [userProfile] : [];
-        }
-        return [];
-    }, [userProfile, allUsers]);
-
-    return { users: usersList, isLoading: areUsersLoading && userProfile?.role === 'admin' };
+    return { users: users || [], isLoading };
 }
 
 
@@ -147,6 +135,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
   const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
+  
+  const usersForSession = useMemo(() => {
+    if(userProfile?.role === 'admin') return students;
+    if(userProfile?.role === 'viewer') return [userProfile];
+    return [];
+  }, [userProfile, students]);
+
 
   // Effect to sync local session state from the main session document
   useEffect(() => {
@@ -215,71 +210,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         setAttendance(new Map());
     }
-  }, [dbSession]);
+  }, [dbSession, session.status]);
 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
-    if (liveRecords && students.length > 0) {
-        const newAttendance = new Map<string, AttendanceRecord>();
-        const newDevices = new Map<number, Set<string>>();
-        
-        for (let i = 1; i <= (session.totalScans || 3); i++) {
-            newDevices.set(i, new Set());
-        }
+    if (session.status !== 'active') return;
 
-        students.forEach(student => {
-            const liveRecordData = liveRecords.find(r => r.id === student.uid);
-            if (liveRecordData) {
-                 const hydratedRecord: AttendanceRecord = {
-                    student: liveRecordData.student,
-                    scans: liveRecordData.scans.map((scan: any) => ({
-                        ...scan,
-                        timestamp: scan.timestamp ? new Date(scan.timestamp.seconds ? scan.timestamp.seconds * 1000 : scan.timestamp) : null
-                    })),
-                    finalStatus: liveRecordData.finalStatus,
-                    correctionRequest: liveRecordData.correctionRequest
-                };
-                newAttendance.set(student.uid, hydratedRecord);
+    const usersToProcess = userProfile?.role === 'admin' ? students : (userProfile ? [userProfile] : []);
 
-                hydratedRecord.scans.forEach((scan, index) => {
-                    if (scan.status !== 'absent' && scan.deviceId) {
-                        newDevices.get(index + 1)?.add(scan.deviceId);
-                    }
-                });
+    if (usersToProcess.length > 0) {
+      const newAttendance = new Map<string, AttendanceRecord>();
+      const newDevices = new Map<number, Set<string>>();
+      
+      for (let i = 1; i <= (session.totalScans || 3); i++) {
+          newDevices.set(i, new Set());
+      }
 
-            } else {
-                 const defaultRecord: AttendanceRecord = {
-                    student,
-                    scans: Array.from({ length: session.totalScans || 2 }, () => ({
-                        status: 'absent',
-                        timestamp: null,
-                        minutesLate: 0,
-                    })),
-                    finalStatus: 'absent'
-                };
-                newAttendance.set(student.uid, defaultRecord);
-            }
-        });
-        setAttendance(newAttendance);
-        setDevicesInUse(newDevices);
-    } else if (students.length > 0 && session.status === 'active') {
-        // Initialize with default records if no live records exist yet for an active session
-         const newAttendance = new Map<string, AttendanceRecord>();
-          students.forEach(student => {
-             const defaultRecord: AttendanceRecord = {
-                student,
-                scans: Array.from({ length: session.totalScans || 2 }, () => ({
-                    status: 'absent',
-                    timestamp: null,
-                    minutesLate: 0,
-                })),
-                finalStatus: 'absent'
-            };
-            newAttendance.set(student.uid, defaultRecord);
-        });
-        setAttendance(newAttendance);
+      usersToProcess.forEach(student => {
+          const liveRecordData = liveRecords?.find(r => r.id === student.uid);
+          if (liveRecordData) {
+               const hydratedRecord: AttendanceRecord = {
+                  student: liveRecordData.student,
+                  scans: liveRecordData.scans.map((scan: any) => ({
+                      ...scan,
+                      timestamp: scan.timestamp ? new Date(scan.timestamp.seconds ? scan.timestamp.seconds * 1000 : scan.timestamp) : null
+                  })),
+                  finalStatus: liveRecordData.finalStatus,
+                  correctionRequest: liveRecordData.correctionRequest
+              };
+              newAttendance.set(student.uid, hydratedRecord);
+
+              hydratedRecord.scans.forEach((scan, index) => {
+                  if (scan.status !== 'absent' && scan.deviceId) {
+                      newDevices.get(index + 1)?.add(scan.deviceId);
+                  }
+              });
+
+          } else {
+               const defaultRecord: AttendanceRecord = {
+                  student,
+                  scans: Array.from({ length: session.totalScans || 2 }, () => ({
+                      status: 'absent',
+                      timestamp: null,
+                      minutesLate: 0,
+                  })),
+                  finalStatus: 'absent'
+              };
+              newAttendance.set(student.uid, defaultRecord);
+          }
+      });
+      setAttendance(newAttendance);
+      setDevicesInUse(newDevices);
     }
-  }, [liveRecords, students, session.totalScans, session.status]);
+  }, [liveRecords, students, session.totalScans, session.status, userProfile]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -299,7 +282,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!firestore || !userProfile || !sessionDocRef || students.length === 0) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure residents are loaded.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure residents are loaded and you have permissions.' });
         return;
     }
 
@@ -318,10 +301,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             subject: payload.subject,
             totalScans: payload.totalScans,
             currentScan: 1,
-            lateAfterMinutes: payload.lateAfterMinutes,
             radius: payload.radius,
             isSelfieRequired: payload.isSelfieRequired,
           };
+          
+          if (attendanceMode === 'class') {
+            sessionData.lateAfterMinutes = payload.lateAfterMinutes;
+          }
     
           if (payload.totalScans >= 2) {
               sessionData.secondScanLateAfterMinutes = payload.lateAfterMinutes;
@@ -373,11 +359,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!sessionDocRef || !dbSession || !firestore) return;
 
     try {
-        const batch = writeBatch(firestore);
+        const currentRecordsPath = `sessions/${attendanceMode}-current/records`;
+        const recordsSnapshot = await getDocs(collection(firestore, currentRecordsPath));
         
-        const archiveSessionRef = doc(collection(firestore, "sessions"));
-        
-        const recordsSnapshot = await getDocs(collection(firestore, 'sessions', `${attendanceMode}-current`, 'records'));
+        // Use a single batch to update finalStatus for live records
+        const updateBatch = writeBatch(firestore);
         recordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const scansCompleted = recordData.scans.filter((s: ScanData) => s.status !== 'absent').length;
@@ -390,12 +376,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 finalStatus = isLate ? 'late' : 'present';
             }
 
-            batch.update(recordDoc.ref, { finalStatus });
+            updateBatch.update(recordDoc.ref, { finalStatus });
         });
-        await batch.commit();
+        await updateBatch.commit();
 
+
+        // Now, perform the archival in a second step
         const archiveBatch = writeBatch(firestore);
-
+        const archiveSessionRef = doc(collection(firestore, "sessions"));
+        
         const sessionToArchive: Partial<AttendanceSession> = {
           ...dbSession
         };
@@ -407,7 +396,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         archiveBatch.set(archiveSessionRef, sessionToArchive);
         
-        const finalRecordsSnapshot = await getDocs(collection(firestore, 'sessions', `${attendanceMode}-current`, 'records'));
+        // Re-fetch records that now have the finalStatus updated
+        const finalRecordsSnapshot = await getDocs(collection(firestore, currentRecordsPath));
+
         finalRecordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const archiveRecordRef = doc(firestore, 'sessions', archiveSessionRef.id, 'records', recordDoc.id);
@@ -415,11 +406,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 ...recordData,
                 scans: recordData.scans.map((scan: any) => {
                     let timestamp = null;
+                    // Handle both Firestore Timestamps and ISO strings
                     if (scan.timestamp) {
-                        if (scan.timestamp.toDate) {
+                        if (scan.timestamp.toDate) { // It's a Firestore Timestamp
                             timestamp = scan.timestamp.toDate().toISOString();
-                        } 
-                        else if (typeof scan.timestamp === 'string') {
+                        } else if (typeof scan.timestamp === 'string') { // It's already an ISO string
                             timestamp = scan.timestamp;
                         }
                     }
@@ -431,10 +422,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 correctionRequest: recordData.correctionRequest || null,
             };
             archiveBatch.set(archiveRecordRef, dataToArchive);
-            archiveBatch.delete(recordDoc.ref);
+            archiveBatch.delete(recordDoc.ref); // Delete from live collection
         });
 
-        archiveBatch.delete(sessionDocRef);
+        archiveBatch.delete(sessionDocRef); // Delete the live session doc
 
         await archiveBatch.commit();
 
@@ -464,12 +455,10 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
     const studentRecord = studentRecordSnap.data();
     const currentScanIndex = session.currentScan - 1;
 
-    // The single, correct code for the current active scan
-    const expectedCode = session.readableCode;
     const { readableCode: receivedCode } = parseQrCodeValue(code);
 
-    if (receivedCode.toUpperCase() !== expectedCode.toUpperCase()) {
-        toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
+    if (receivedCode.toUpperCase() !== session.readableCode.toUpperCase()) {
+        toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect for the current scan.' });
         return;
     }
     
@@ -490,7 +479,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
     const latePolicies = [session.lateAfterMinutes, session.secondScanLateAfterMinutes, session.thirdScanLateAfterMinutes];
     const latePolicyForCurrentScan = latePolicies[currentScanIndex];
     
-    if (latePolicyForCurrentScan !== undefined && session.startTime) {
+    if (attendanceMode === 'class' && latePolicyForCurrentScan !== undefined && session.startTime) {
         const cutoffTime = new Date(session.startTime.getTime() + latePolicyForCurrentScan * 60000);
         if (now > cutoffTime) {
             status = 'late';
@@ -511,6 +500,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
         const uploadedURLs = await Promise.all(
           photoURLs.map(dataUrl => uploadImageAndGetURL(dataUrl, studentId))
         );
+        // Correctly use photoURLs as per the schema
         scanUpdate.photoURLs = uploadedURLs;
       } catch (error) {
         toast({ variant: 'destructive', title: 'Image Upload Failed', description: (error as Error).message });
@@ -543,10 +533,12 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
         else if (nextScanNumber === 3) keyFieldToUpdate = 'thirdKey';
         else return;
         
-        await updateDocumentNonBlocking(sessionDocRef, { 
+        const updatePayload = { 
             currentScan: nextScanNumber,
             [keyFieldToUpdate]: qrCodeValue
-        });
+        };
+        
+        await updateDocumentNonBlocking(sessionDocRef, updatePayload);
         
         toast({ title: `Scan ${nextScanNumber} Activated`, description: 'Residents must scan again to continue.' });
 
@@ -608,7 +600,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
 
   const value = useMemo(() => ({
     session,
-    students: areStudentsLoading ? [] : students, 
+    students: usersForSession, 
     attendance,
     startSession,
     endSession,
@@ -618,7 +610,7 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
     handleCorrectionRequest,
     attendanceMode,
     setAttendanceMode,
-  }), [session, students, areStudentsLoading, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection, handleCorrectionRequest, attendanceMode, setAttendanceMode]);
+  }), [session, usersForSession, attendance, startSession, endSession, markAttendance, activateNextScan, requestCorrection, handleCorrectionRequest, attendanceMode, setAttendanceMode]);
 
 
   return (
