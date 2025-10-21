@@ -48,7 +48,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (userProfile?.role === 'viewer') {
       setSelectedStudentUid(userProfile.uid);
-    } else if (students.length > 0 && !selectedStudentUid) {
+    } else if (students && students.length > 0 && !selectedStudentUid) {
       // Default to the first student if none is selected
       setSelectedStudentUid(students[0].uid);
     }
@@ -123,6 +123,7 @@ export default function ChatPage() {
   };
 
   const getStudentName = (uid: string) => {
+    if (!students) return 'Unknown Student';
     return students.find(s => s.uid === uid)?.name || 'Unknown Student';
   }
 
@@ -150,7 +151,7 @@ export default function ChatPage() {
                         <SelectValue placeholder="Select a student" />
                     </SelectTrigger>
                     <SelectContent>
-                        {students.map(student => (
+                        {students && students.map(student => (
                             <SelectItem key={student.uid} value={student.uid}>
                                 {student.name} ({student.roll || 'N/A'})
                             </SelectItem>
