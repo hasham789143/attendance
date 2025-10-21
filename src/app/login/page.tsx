@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useFirebase } from '@/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { auth } = useFirebase();
   const { toast } = useToast();
@@ -38,11 +39,19 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (error: any) {
       console.error('Login Error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Login Failed',
-        description: error.message || 'An unexpected error occurred.',
-      });
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        toast({
+            variant: 'destructive',
+            title: 'Login Failed',
+            description: 'Invalid email or password.',
+        });
+      } else {
+        toast({
+            variant: 'destructive',
+            title: 'Login Failed',
+            description: error.message || 'An unexpected error occurred.',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -80,14 +89,26 @@ export default function LoginPage() {
                         Forgot Password?
                     </Link>
                 </div>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-                required
-              />
+                <div className="relative">
+                    <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={loading}
+                        required
+                    />
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute inset-y-0 right-0 h-full px-3"
+                        onClick={() => setShowPassword(!showPassword)}
+                    >
+                        {showPassword ? <EyeOff /> : <Eye />}
+                        <span className="sr-only">{showPassword ? 'Hide password' : 'Show password'}</span>
+                    </Button>
+                </div>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
