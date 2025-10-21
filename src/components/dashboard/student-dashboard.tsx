@@ -1,3 +1,4 @@
+
 'use client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
@@ -110,7 +111,7 @@ export function StudentDashboard() {
   }, [session.status, session.lat, session.lng, session.radius, toast]);
 
   useEffect(() => {
-    if (showScanner && session.isSelfieRequired && hasCameraPermission) {
+    if (showScanner && hasCameraPermission) {
       const getCameraStream = async () => {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
@@ -123,7 +124,7 @@ export function StudentDashboard() {
       };
       getCameraStream();
     }
-  }, [showScanner, session.isSelfieRequired, hasCameraPermission]);
+  }, [showScanner, hasCameraPermission]);
 
 
   const resetScanner = () => {
@@ -148,26 +149,29 @@ export function StudentDashboard() {
       return;
     }
 
-    setIsLoading(true);
-    const deviceId = getDeviceId();
-    
-    await markAttendance({
-      studentId: userProfile.uid,
-      code: result,
-      deviceId,
-      photoURLs: capturedImage ? [capturedImage] : undefined, // In a real scenario, you'd pass all 3 URLs
-    });
-    
-    resetScanner();
+    if (attendanceMode === 'hostel' && session.isSelfieRequired) {
+        await processHostelCheckin(result);
+    } else {
+        setIsLoading(true);
+        const deviceId = getDeviceId();
+        
+        await markAttendance({
+          studentId: userProfile.uid,
+          code: result,
+          deviceId,
+          photoURLs: capturedImage ? [capturedImage] : undefined,
+        });
+        
+        resetScanner();
+    }
   };
   
   const handleScanResult = (result: any) => {
     const resultData = Array.isArray(result) ? result[0]?.rawValue : result?.rawValue;
     if (resultData && !scannedData) {
       setScannedData(resultData);
-       if (attendanceMode === 'hostel' && session.isSelfieRequired) {
-        // For hostel selfie mode, we proceed to auto-checkin
-         processHostelCheckin(resultData);
+      if (attendanceMode === 'hostel' && session.isSelfieRequired) {
+        processScan(resultData);
       }
     }
   };
@@ -294,21 +298,13 @@ export function StudentDashboard() {
   const processHostelCheckin = async (code: string) => {
     if (!userProfile || !isInRange) return;
     setIsLoading(true);
-    setScannedData(code);
-
-    const deviceId = getDeviceId();
     
-    // In Hostel mode with selfie, we don't need to auto-capture. We just mark attendance.
-    // The user will click the button to start capture.
-    await markAttendance({
-      studentId: userProfile.uid,
-      code,
-      deviceId
-    });
-
+    // The code is valid, now we just need to take pictures.
+    // The markAttendance call will happen after picture capture.
     toast({ title: "Check-in confirmed!", description: "Now, please take your selfie."});
     setIsLoading(false);
-    // Don't reset the scanner, keep it open for selfie capture.
+    // Do not reset the scanner, keep it open for selfie capture.
+    // The scannedData state is already set by handleScanResult.
   }
   
   const takePicture = (): string | null => {
@@ -327,7 +323,7 @@ export function StudentDashboard() {
   };
 
   const startCaptureSequence = async () => {
-    if (!userProfile) return;
+    if (!userProfile || !scannedData) return;
     setIsCapturing(true);
     const capturedImages: string[] = [];
 
@@ -351,7 +347,7 @@ export function StudentDashboard() {
     
     await markAttendance({
         studentId: userProfile.uid,
-        code: session.qrCodeValue,
+        code: scannedData,
         deviceId,
         photoURLs: capturedImages
     });
@@ -412,33 +408,49 @@ export function StudentDashboard() {
 
   const renderHostelSelfieContent = () => (
      <div className="relative">
-        <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
-        <canvas ref={canvasRef} className="hidden" />
+      {!scannedData ? (
+         <>
+          <p className="text-sm text-green-600 font-semibold mb-2">Scan the QR code to begin check-in.</p>
+          <Scanner
+            onScan={handleScanResult}
+            onError={handleError}
+            components={{ audio: false, finder: true }}
+            options={{ delayBetweenScanAttempts: 500, delayBetweenScanSuccess: 1000 }}
+          />
+          <Button onClick={resetScanner} className="w-full mt-4" variant="outline">Cancel</Button>
+         </>
+      ) : (
+        <>
+          <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted playsInline />
+          <canvas ref={canvasRef} className="hidden" />
 
-        {isCapturing && captureCountdown !== null && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                <p className="text-8xl font-bold text-white">{captureCountdown}</p>
-            </div>
-        )}
-        
-        {capturedImage && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
-                <img src={capturedImage} alt="Captured selfie" className="h-32 w-auto rounded-lg border-2 border-primary" />
-                <p className="text-white mt-4 font-semibold">Attendance Recorded!</p>
-            </div>
-        )}
+          {isCapturing && captureCountdown !== null && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <p className="text-8xl font-bold text-white">{captureCountdown}</p>
+              </div>
+          )}
+          
+          {capturedImage && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
+                  <img src={capturedImage} alt="Captured selfie" className="h-32 w-auto rounded-lg border-2 border-primary" />
+                  <p className="text-white mt-4 font-semibold">Attendance Recorded!</p>
+              </div>
+          )}
 
-        {!isCapturing && !capturedImage && (
-          <div className="mt-4">
-            <Button onClick={startCaptureSequence} className="w-full" size="lg">
-                <Camera className="mr-2" /> Take 3 Pictures
-            </Button>
+          {!isCapturing && !capturedImage && (
+            <div className="mt-4">
+              <p className="text-sm text-center text-muted-foreground mb-2">QR Code accepted. Position your face in the camera and take your pictures.</p>
+              <Button onClick={startCaptureSequence} className="w-full" size="lg">
+                  <Camera className="mr-2" /> Take 3 Pictures
+              </Button>
+            </div>
+          )}
+          
+          <div className="flex w-full gap-2 mt-4">
+              <Button onClick={resetScanner} className="w-full" variant="outline">Cancel</Button>
           </div>
-        )}
-        
-        <div className="flex w-full gap-2 mt-4">
-            <Button onClick={resetScanner} className="w-full" variant="outline">Cancel</Button>
-        </div>
+        </>
+      )}
      </div>
   );
 
@@ -509,7 +521,7 @@ export function StudentDashboard() {
                 ) : (
                   <Button onClick={handleScanButtonClick} size="lg" disabled={isLoading}>
                     {attendanceMode === 'hostel' && session.isSelfieRequired 
-                      ? <><Camera className="mr-2 h-5 w-5" />Start Check-in</>
+                      ? <><QrCode className="mr-2 h-5 w-5" />Scan to Start Check-in</>
                       : <><QrCode className="mr-2 h-5 w-5" />Scan QR Code for {getScanLabel(session.currentScan)}</>
                     }
                   </Button>
