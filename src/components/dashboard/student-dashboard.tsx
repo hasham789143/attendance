@@ -1,3 +1,4 @@
+
 'use client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
@@ -78,16 +79,15 @@ export function StudentDashboard() {
 
   useEffect(() => {
     setIsClient(true);
-    // If user is not 'both', ensure they are in the correct mode.
-    if (userProfile?.userType === 'student') {
+    // If user is not 'both', ensure they are in the correct mode to avoid re-renders.
+    if (userProfile?.userType === 'student' && attendanceMode !== 'class') {
         setAttendanceMode('class');
-    } else if (userProfile?.userType === 'resident') {
+    } else if (userProfile?.userType === 'resident' && attendanceMode !== 'hostel') {
         setAttendanceMode('hostel');
     }
-  }, [userProfile, setAttendanceMode]);
+  }, [userProfile, setAttendanceMode, attendanceMode]);
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
-  const uniqueScanKey = myRecord?.scans[session.currentScan - 1]?.uniqueScanKey;
 
 
   useEffect(() => {
@@ -321,12 +321,12 @@ export function StudentDashboard() {
   }
 
  const handleHostelCheckIn = async () => {
-    if (!userProfile || !uniqueScanKey) return;
+    if (!userProfile) return;
     setIsLoading(true);
 
     const success = await markAttendance({
         studentId: userProfile.uid,
-        code: uniqueScanKey,
+        code: '', // Not needed for hostel with unique keys
         deviceId: getDeviceId(),
     });
 
@@ -366,6 +366,7 @@ export function StudentDashboard() {
   };
 
   const startCaptureSequence = async () => {
+    setShowScanner(true);
     setIsCapturing(true);
     const images: string[] = [];
 
