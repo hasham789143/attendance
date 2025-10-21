@@ -1,3 +1,4 @@
+
 {
     "common": {
         "downloadPdf": "下载PDF",
@@ -42,7 +43,8 @@
             "description": "点击“开始新会话”以开始考勤。"
         },
         "filters": {
-            "all": "总居民",
+            "totalStudents": "总学生",
+            "totalResidents": "总居民",
             "present": "到场",
             "absent": "缺席",
             "left_early": "早退"
@@ -98,3 +100,5 @@
         "liveReportFilename": "实时考勤报告"
     }
 }
+
+    
