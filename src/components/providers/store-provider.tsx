@@ -80,17 +80,17 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
     
+    // This query is now stable for admins, it doesn't depend on attendanceMode.
     const usersQuery = useMemoFirebase(() => {
         if (!firestore || !userProfile) return null;
         
-        // For admins, fetch all non-admin users. For others, just fetch their own profile.
         const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
         if (userProfile?.role === 'admin') {
+           // Fetch all user types an admin might manage. Filtering happens later.
            return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
         }
         
-        // For non-admins, the query is also stable.
         return query(baseQuery, where('uid', '==', userProfile.uid));
 
     }, [firestore, userProfile]);
@@ -150,7 +150,6 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
     return allUsers;
   }, [userProfile, allUsers, attendanceMode]);
   
-
   // Effect to sync local session state from the main session document
   useEffect(() => {
     if (dbSession) {
@@ -171,7 +170,8 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
             break;
       }
        if(qrCodeValue) {
-          readableCode = parseQrCodeValue(qrCodeValue).readableCode;
+          const parsed = parseQrCodeValue(qrCodeValue);
+          if (parsed) readableCode = parsed.readableCode;
        }
 
 
@@ -202,7 +202,6 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
           radius: 100,
           isSelfieRequired: false,
         });
-        setAttendance(new Map());
     } else {
         // Ensure session is reset if dbSession becomes null and session was already inactive
          setSession({
@@ -271,7 +270,7 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
     setAttendance(newAttendance);
     setDevicesInUse(newDevices);
     
-  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading, attendance]);
+  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -281,6 +280,7 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
   };
 
   const parseQrCodeValue = (qrValue: string) => {
+    if (typeof qrValue !== 'string') return null;
     const parts = qrValue.split(':');
     return { prefix: parts[0] || '', readableCode: parts[1] || '', timestamp: parts[2] || '' };
   };
@@ -487,8 +487,8 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload): Promi
 
     // Check if code is valid
     if (attendanceMode === 'class') {
-      const { readableCode: receivedCode } = parseQrCodeValue(code);
-      if (receivedCode.toUpperCase() !== session.readableCode.toUpperCase()) {
+      const parsed = parseQrCodeValue(code);
+      if (!parsed || parsed.readableCode.toUpperCase() !== session.readableCode.toUpperCase()) {
           toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect for the current scan.' });
           return false;
       }
@@ -725,5 +725,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    
