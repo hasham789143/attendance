@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useToast } from '@/hooks/use-toast.tsx';
@@ -102,7 +103,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
-  const [attendanceMode, setAttendanceMode] = useState<AttendanceMode>('class');
+  const [attendanceMode, setAttendanceModeState] = useState<AttendanceMode>('class');
   const { users: allUsersInMode, isLoading: areUsersLoading } = useUsers(attendanceMode);
 
 
@@ -137,14 +138,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
   
   const usersForSession = useMemo(() => {
-    // For admins, return all non-admin users in the current mode.
-    // For students/residents, just return their own profile.
     const filteredUsers = allUsersInMode.filter(u => u.role !== 'admin');
     if (userProfile?.role === 'admin') return filteredUsers;
     if (userProfile?.role === 'viewer') return allUsersInMode.filter(u => u.uid === userProfile.uid);
     return [];
   }, [userProfile, allUsersInMode]);
-
+  
+  const setAttendanceMode = useCallback((mode: AttendanceMode) => {
+    setAttendanceModeState(mode);
+  }, []);
 
   // Effect to sync local session state from the main session document
   useEffect(() => {
