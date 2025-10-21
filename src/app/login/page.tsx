@@ -39,7 +39,7 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (error: any) {
       console.error('Login Error:', error);
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+      if (error.code === 'auth/invalid-credential') {
         toast({
             variant: 'destructive',
             title: 'Login Failed',
@@ -105,7 +105,7 @@ export default function LoginPage() {
                         className="absolute inset-y-0 right-0 h-full px-3"
                         onClick={() => setShowPassword(!showPassword)}
                     >
-                        {showPassword ? <EyeOff /> : <Eye />}
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         <span className="sr-only">{showPassword ? 'Hide password' : 'Show password'}</span>
                     </Button>
                 </div>
