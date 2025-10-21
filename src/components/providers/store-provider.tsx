@@ -387,18 +387,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const archiveBatch = writeBatch(firestore);
 
         const sessionToArchive: Partial<AttendanceSession> = {
-          ...dbSession,
-          key: dbSession.key,
-          secondKey: dbSession.secondKey,
-          thirdKey: dbSession.thirdKey,
-          thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes,
-          radius: dbSession.radius,
+          ...dbSession
         };
 
         // Clean up undefined optional fields before archiving
         if (sessionToArchive.secondKey === undefined) delete sessionToArchive.secondKey;
         if (sessionToArchive.thirdKey === undefined) delete sessionToArchive.thirdKey;
-        if (sessionToArchive.thirdScanLateAfterMinutes === undefined) delete sessionToArchive.thirdScanLateAfterMinutes;
 
 
         archiveBatch.set(archiveSessionRef, sessionToArchive);
@@ -460,27 +454,12 @@ const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
     const studentRecord = studentRecordSnap.data();
     const currentScanIndex = session.currentScan - 1;
 
-    let expectedCode = '';
-    let codePrefixToCheck = `scan${session.currentScan}`;
-
-    if (attendanceMode === 'hostel' && session.isSelfieRequired) {
-        // For hostel selfie mode, there is only one scan and one key
-        expectedCode = parseQrCodeValue(session.qrCodeValue).readableCode;
-        codePrefixToCheck = 'scan1';
-    } else {
-        const { readableCode } = parseQrCodeValue(session.qrCodeValue);
-        expectedCode = readableCode;
-    }
-
-    const { readableCode: receivedCode, prefix: codePrefix } = parseQrCodeValue(code);
+    // The single, correct code for the current active scan
+    const expectedCode = session.readableCode;
+    const { readableCode: receivedCode } = parseQrCodeValue(code);
 
     if (receivedCode.toUpperCase() !== expectedCode.toUpperCase()) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
-        return;
-    }
-
-    if (codePrefix !== codePrefixToCheck) {
-        toast({ variant: 'destructive', title: 'Wrong Session QR', description: `This QR is for Scan ${codePrefix.replace('scan', '')}, but Scan ${session.currentScan} is active.` });
         return;
     }
     
