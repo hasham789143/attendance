@@ -118,21 +118,33 @@ export function StudentDashboard() {
     }
   }, [session.status, session.lat, session.lng, session.radius, toast]);
 
-  useEffect(() => {
-    if (showScanner && hasCameraPermission) {
-      const getCameraStream = async () => {
+    useEffect(() => {
+    let stream: MediaStream | null = null;
+    const getCameraStream = async () => {
+      if (showScanner) {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+          setHasCameraPermission(true);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
           }
         } catch (error) {
           handleError(error as Error);
         }
-      };
-      getCameraStream();
-    }
-  }, [showScanner, hasCameraPermission]);
+      }
+    };
+
+    getCameraStream();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [showScanner]);
 
 
   const resetScanner = () => {
@@ -142,10 +154,6 @@ export function StudentDashboard() {
     setCapturedImages([]);
     setIsCapturing(false);
     setCaptureCountdown(null);
-    if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-    }
   }
 
   const processScan = async (result: string | null) => {
@@ -199,7 +207,7 @@ export function StudentDashboard() {
             toast({
               variant: 'destructive',
               title: 'Scanning Error',
-              description: 'An unexpected error occurred with the scanner.',
+              description: error.message || 'Could not start video source.',
             });
        }
        resetScanner();
@@ -298,14 +306,7 @@ export function StudentDashboard() {
 
 
   const handleScanButtonClick = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(track => track.stop());
-        setHasCameraPermission(true);
-        setShowScanner(true);
-      } catch (error) {
-        handleError(error as Error);
-      }
+      setShowScanner(true);
   }
 
   const handleSubmitAttendance = async () => {
@@ -342,20 +343,6 @@ export function StudentDashboard() {
   const startCaptureSequence = async () => {
     if (!userProfile || !uniqueScanKey) return;
     setIsLoading(true); // Loading starts for the capture process
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            await new Promise(resolve => {
-                if (videoRef.current) videoRef.current.onloadedmetadata = resolve;
-            });
-        }
-    } catch (error) {
-        handleError(error as Error);
-        resetScanner();
-        return;
-    }
 
     setIsCapturing(true);
     const images: string[] = [];
@@ -527,7 +514,11 @@ export function StudentDashboard() {
                 </div>
             ) : (
               <>
-                {shouldShowScanButton() && (
+                {shouldShowScanButton() && attendanceMode === 'hostel' ? (
+                  <Button onClick={startCaptureSequence} size="lg" disabled={isLoading || isInRange === false}>
+                    <KeyRound className="mr-2 h-5 w-5" />Mark Attendance & Take Selfies
+                  </Button>
+                ) : shouldShowScanButton() && (
                   <Button onClick={handleScanButtonClick} size="lg" disabled={isLoading || isInRange === false}>
                     <QrCode className="mr-2 h-5 w-5" />Scan QR Code for {getScanLabel(session.currentScan)}
                   </Button>
