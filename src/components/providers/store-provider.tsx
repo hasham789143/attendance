@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useToast } from '@/hooks/use-toast.tsx';
@@ -8,13 +7,11 @@ import { collection, query, where, doc, writeBatch, getDocs, getDoc } from 'fire
 import { useCollection, useDoc, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { getDistance } from '@/lib/utils';
 import { AttendanceSession, ScanData } from '@/models/backend';
+import { uploadImageAndGetURL } from '@/firebase/storage';
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
 export type AttendanceMode = 'class' | 'hostel';
 
-
-// This represents the live attendance record in the component's state.
-// Timestamps are Date objects for easier manipulation.
 export type AttendanceRecord = {
   student: UserProfile;
   scans: ScanData[];
@@ -42,18 +39,35 @@ export type Session = {
   secondScanLateAfterMinutes?: number;
   thirdScanLateAfterMinutes?: number;
   radius?: number; // Allowed radius in meters
+  isSelfieRequired?: boolean;
 
   lat?: number;
   lng?: number;
 };
 
+type MarkAttendancePayload = {
+    studentId: string;
+    code: string;
+    deviceId: string;
+    photoURLs?: string[];
+};
+
+type StartSessionPayload = {
+  lateAfterMinutes: number;
+  subject: string;
+  totalScans: number;
+  radius: number;
+  isSelfieRequired: boolean;
+};
+
+
 type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
   students: UserProfile[];
-  startSession: (lateAfterMinutes: number, subject: string, totalScans: number, radius: number) => void;
+  startSession: (payload: StartSessionPayload) => Promise<void>;
   endSession: () => void;
-  markAttendance: (studentId: string, code: string, deviceId: string) => void;
+  markAttendance: (payload: MarkAttendancePayload) => Promise<void>;
   activateNextScan: () => void;
   requestCorrection: (studentId: string, reason: string) => void;
   handleCorrectionRequest: (studentId: string, approved: boolean) => void;
@@ -119,6 +133,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     totalScans: 0,
     lateAfterMinutes: 0,
     radius: 100,
+    isSelfieRequired: false,
   });
 
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
@@ -161,6 +176,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           secondScanLateAfterMinutes: dbSession.secondScanLateAfterMinutes,
           thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes,
           radius: dbSession.radius,
+          isSelfieRequired: dbSession.isSelfieRequired,
       });
     } else if (session.status === 'active') {
         setSession({
@@ -172,6 +188,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           totalScans: 0,
           lateAfterMinutes: 0,
           radius: 100,
+          isSelfieRequired: false,
         });
         setAttendance(new Map());
     } else {
@@ -185,6 +202,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           totalScans: 0,
           lateAfterMinutes: 0,
           radius: 100,
+          isSelfieRequired: false,
         });
         setAttendance(new Map());
     }
@@ -235,7 +253,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         setAttendance(newAttendance);
         setDevicesInUse(newDevices);
-    } else if (students.length > 0) {
+    } else if (students.length > 0 && session.status === 'active') {
         // Initialize with default records if no live records exist yet for an active session
          const newAttendance = new Map<string, AttendanceRecord>();
           students.forEach(student => {
@@ -252,7 +270,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         setAttendance(newAttendance);
     }
-  }, [liveRecords, students, session.totalScans]);
+  }, [liveRecords, students, session.totalScans, session.status]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -266,7 +284,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { prefix: parts[0] || '', readableCode: parts[1] || '', timestamp: parts[2] || '' };
   };
 
-  const startSession = useCallback(async (lateAfterMinutes: number, subject: string, totalScans: number, radius: number) => {
+  const startSession = useCallback(async (payload: StartSessionPayload) => {
     if (!navigator.geolocation) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
@@ -276,59 +294,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return;
     }
 
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-      const { qrCodeValue } = generateNewCode('scan1');
-      
-      const sessionData: Partial<AttendanceSession> = {
-        key: qrCodeValue,
-        adminUid: userProfile.uid,
-        createdAt: new Date().toISOString(),
-        lat: latitude,
-        lng: longitude,
-        subject: subject,
-        totalScans: totalScans,
-        currentScan: 1,
-        lateAfterMinutes: lateAfterMinutes,
-        radius: radius,
-      };
-
-      if (totalScans >= 2) {
-          sessionData.secondScanLateAfterMinutes = lateAfterMinutes;
-      }
-      if (totalScans === 3) {
-        sessionData.thirdScanLateAfterMinutes = lateAfterMinutes;
-      }
-      
-      const batch = writeBatch(firestore);
-      batch.set(sessionDocRef, sessionData);
-
-      students.forEach(student => {
-          const recordRef = doc(firestore, 'sessions', `${attendanceMode}-current`, 'records', student.uid);
-          const initialRecord = {
-              student: {
-                uid: student.uid,
-                name: student.name,
-                email: student.email,
-                role: student.role,
-                roll: student.roll,
-              }, 
-              scans: Array.from({ length: totalScans }, () => ({
-                  status: 'absent',
-                  timestamp: null,
-                  minutesLate: 0,
-              })),
-              finalStatus: 'absent',
+    return new Promise<void>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const { qrCodeValue } = generateNewCode('scan1');
+          
+          const sessionData: Partial<AttendanceSession> = {
+            key: qrCodeValue,
+            adminUid: userProfile.uid,
+            createdAt: new Date().toISOString(),
+            lat: latitude,
+            lng: longitude,
+            subject: payload.subject,
+            totalScans: payload.totalScans,
+            currentScan: 1,
+            lateAfterMinutes: payload.lateAfterMinutes,
+            radius: payload.radius,
+            isSelfieRequired: payload.isSelfieRequired,
           };
-          batch.set(recordRef, initialRecord);
+    
+          if (payload.totalScans >= 2) {
+              sessionData.secondScanLateAfterMinutes = payload.lateAfterMinutes;
+          }
+          if (payload.totalScans === 3) {
+            sessionData.thirdScanLateAfterMinutes = payload.lateAfterMinutes;
+          }
+          
+          const batch = writeBatch(firestore);
+          batch.set(sessionDocRef, sessionData);
+    
+          students.forEach(student => {
+              const recordRef = doc(firestore, 'sessions', `${attendanceMode}-current`, 'records', student.uid);
+              const initialRecord = {
+                  student: {
+                    uid: student.uid,
+                    name: student.name,
+                    email: student.email,
+                    role: student.role,
+                    roll: student.roll,
+                  }, 
+                  scans: Array.from({ length: payload.totalScans }, () => ({
+                      status: 'absent',
+                      timestamp: null,
+                      minutesLate: 0,
+                  })),
+                  finalStatus: 'absent',
+              };
+              batch.set(recordRef, initialRecord);
+          });
+          
+          await batch.commit();
+          
+          toast({ title: 'Session Started', description: `Residents can now perform the first scan.` });
+          resolve();
+        } catch (error) {
+          toast({ variant: 'destructive', title: 'Session Start Failed', description: (error as Error).message });
+          reject(error);
+        }
+      }, (error) => {
+          toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
+          reject(error);
       });
-      
-      await batch.commit();
-      
-      toast({ title: 'Session Started', description: `Residents can now perform the first scan.` });
-
-    }, (error) => {
-        toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
     });
   }, [toast, firestore, userProfile, sessionDocRef, students, attendanceMode]);
   
@@ -416,7 +443,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 }, [sessionDocRef, dbSession, firestore, toast, attendanceMode]);
 
 
-const markAttendance = useCallback(async (studentId: string, code: string, deviceId: string) => {
+const markAttendance = useCallback(async (payload: MarkAttendancePayload) => {
+    const { studentId, code, deviceId, photoURLs } = payload;
+    
     if (!firestore || session.status !== 'active' || !session.startTime) {
         toast({ variant: 'destructive', title: 'Session inactive', description: 'The attendance session is not active.' });
         return;
@@ -431,15 +460,26 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
     const studentRecord = studentRecordSnap.data();
     const currentScanIndex = session.currentScan - 1;
 
-    const { readableCode: expectedCode, prefix: codePrefix } = parseQrCodeValue(session.qrCodeValue);
-    const { readableCode: receivedCode } = parseQrCodeValue(code);
+    let expectedCode = '';
+    let codePrefixToCheck = `scan${session.currentScan}`;
+
+    if (attendanceMode === 'hostel' && session.isSelfieRequired) {
+        // For hostel selfie mode, there is only one scan and one key
+        expectedCode = parseQrCodeValue(session.qrCodeValue).readableCode;
+        codePrefixToCheck = 'scan1';
+    } else {
+        const { readableCode } = parseQrCodeValue(session.qrCodeValue);
+        expectedCode = readableCode;
+    }
+
+    const { readableCode: receivedCode, prefix: codePrefix } = parseQrCodeValue(code);
 
     if (receivedCode.toUpperCase() !== expectedCode.toUpperCase()) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: 'The code you scanned is incorrect.' });
         return;
     }
 
-    if (codePrefix !== `scan${session.currentScan}`) {
+    if (codePrefix !== codePrefixToCheck) {
         toast({ variant: 'destructive', title: 'Wrong Session QR', description: `This QR is for Scan ${codePrefix.replace('scan', '')}, but Scan ${session.currentScan} is active.` });
         return;
     }
@@ -449,7 +489,7 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
         return;
     }
 
-    if (studentRecord.scans[currentScanIndex].status !== 'absent') {
+    if (studentRecord.scans[currentScanIndex]?.status !== 'absent') {
         toast({ title: 'Already Scanned', description: `You have already completed Scan ${session.currentScan}.` });
         return;
     }
@@ -470,12 +510,26 @@ const markAttendance = useCallback(async (studentId: string, code: string, devic
     }
     
     const updatedScans = [...studentRecord.scans];
-    updatedScans[currentScanIndex] = {
+    const scanUpdate: Partial<ScanData> = {
         status,
         minutesLate,
         timestamp: now.toISOString(),
         deviceId: deviceId,
     };
+
+    if (session.isSelfieRequired && photoURLs && photoURLs.length > 0) {
+      try {
+        const uploadedURLs = await Promise.all(
+          photoURLs.map(dataUrl => uploadImageAndGetURL(dataUrl, studentId))
+        );
+        scanUpdate.photoURLs = uploadedURLs;
+      } catch (error) {
+        toast({ variant: 'destructive', title: 'Image Upload Failed', description: (error as Error).message });
+        return; // Stop if upload fails
+      }
+    }
+    
+    updatedScans[currentScanIndex] = scanUpdate;
     
     updateDocumentNonBlocking(studentDocRef, { scans: updatedScans });
     toast({ title: `Scan ${session.currentScan} Completed!`, description: `You are marked as ${status.toUpperCase()}${minutesLate > 0 ? ` (${minutesLate} min late)` : ''}.` });
@@ -592,5 +646,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    

@@ -103,6 +103,10 @@
         "subject": {
           "type": "string",
           "description": "The subject of the class session."
+        },
+        "isSelfieRequired": {
+          "type": "boolean",
+          "description": "Whether a selfie is required for this session (hostel mode)."
         }
       },
       "required": [
@@ -141,8 +145,13 @@
         "deviceId": {
           "type": "string"
         },
-        "photoURL": {
-          "type": "string"
+        "photoURLs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "URLs of the captured selfies for this scan."
         }
       },
       "required": [
@@ -249,33 +258,6 @@
           "type": "boolean"
         }
       }
-    },
-    "Translate": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Translate",
-      "type": "object",
-      "description": "Represents a text translation request and result.",
-      "properties": {
-        "sourceText": {
-          "type": "string"
-        },
-        "sourceLanguage": {
-          "type": "string",
-          "enum": ["English", "Chinese"]
-        },
-        "targetLanguage": {
-          "type": "string",
-          "enum": ["English", "Chinese"]
-        },
-        "translatedText": {
-          "type": "string"
-        }
-      },
-       "required": [
-        "sourceText",
-        "sourceLanguage",
-        "targetLanguage"
-      ]
     }
   },
   "auth": {
@@ -290,17 +272,29 @@
       },
       "description": "Stores user profile information. The 'userId' is the Firebase Authentication UID."
     },
-    "/sessions/current": {
+    "/sessions/class-current": {
       "schema": {
         "$ref": "#/entities/AttendanceSession"
       },
-      "description": "Stores the current active attendance session. This is a single document."
+      "description": "Stores the current active class attendance session. This is a single document."
     },
-    "/sessions/current/records/{userId}": {
+    "/sessions/class-current/records/{userId}": {
       "schema": {
         "$ref": "#/entities/AttendanceRecord"
       },
-      "description": "Stores the live attendance records for each student in the currently active session."
+      "description": "Stores the live attendance records for each student in the currently active class session."
+    },
+     "/sessions/hostel-current": {
+      "schema": {
+        "$ref": "#/entities/AttendanceSession"
+      },
+      "description": "Stores the current active hostel attendance session. This is a single document."
+    },
+    "/sessions/hostel-current/records/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AttendanceRecord"
+      },
+      "description": "Stores the live attendance records for each resident in the currently active hostel session."
     },
     "/sessions/{sessionId}": {
       "schema": {

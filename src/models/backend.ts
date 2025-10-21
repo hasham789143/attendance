@@ -33,6 +33,7 @@ export interface AttendanceSession {
     secondScanLateAfterMinutes?: number; // For second scan
     thirdScanLateAfterMinutes?: number; // For third scan
     subject?: string; // The subject of the class session
+    isSelfieRequired?: boolean; // Whether a selfie is required for this session (hostel mode).
 }
 
 /**
@@ -44,7 +45,7 @@ export interface ScanData {
     timestamp: string | null;
     minutesLate: number;
     deviceId?: string;
-    photoURL?: string;
+    photoURLs?: string[]; // URLs of the captured selfies for this scan.
 }
 
 /**

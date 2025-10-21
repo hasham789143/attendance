@@ -16,15 +16,18 @@ import { Label } from '@/components/ui/label';
 import { useStore } from '@/components/providers/store-provider';
 import { Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Switch } from '../ui/switch';
 
 export function StartSessionDialog({ children }: { children: React.ReactNode }) {
+  const { startSession, attendanceMode } = useStore();
+
   const [open, setOpen] = useState(false);
   const [lateAfterMinutes, setLateAfterMinutes] = useState('10');
   const [subject, setSubject] = useState('');
   const [totalScans, setTotalScans] = useState('2');
   const [radius, setRadius] = useState('100');
+  const [isSelfieRequired, setIsSelfieRequired] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { startSession } = useStore();
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,12 +36,18 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
     const scans = parseInt(totalScans, 10);
     const radiusMeters = parseInt(radius, 10);
 
-    if (isNaN(minutes) || minutes < 0 || isNaN(scans) || scans < 2 || scans > 3 || isNaN(radiusMeters) || radiusMeters <= 0) {
+    if (isNaN(minutes) || minutes < 0 || isNaN(scans) || scans < 1 || scans > 3 || isNaN(radiusMeters) || radiusMeters <= 0) {
         setLoading(false);
         return;
     }
     
-    startSession(minutes, subject, scans, radiusMeters);
+    await startSession({
+      lateAfterMinutes: minutes, 
+      subject, 
+      totalScans: scans, 
+      radius: radiusMeters,
+      isSelfieRequired: attendanceMode === 'hostel' ? isSelfieRequired : false
+    });
 
     setLoading(false);
     setOpen(false);
@@ -53,7 +62,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
           <DialogHeader>
             <DialogTitle>Start New Session</DialogTitle>
             <DialogDescription>
-              Configure the time window and other settings for this attendance session.
+              Configure the settings for this {attendanceMode} attendance session.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -67,7 +76,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 className="col-span-3"
-                placeholder="e.g. Evening Attendance"
+                placeholder={attendanceMode === 'class' ? "e.g. Physics 101" : "e.g. Evening Roll Call"}
                 required
               />
             </div>
@@ -80,6 +89,7 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                       <SelectValue placeholder="Select number of scans" />
                   </SelectTrigger>
                   <SelectContent>
+                      <SelectItem value="1">1 Scan</SelectItem>
                       <SelectItem value="2">2 Scans (Default)</SelectItem>
                       <SelectItem value="3">3 Scans</SelectItem>
                   </SelectContent>
@@ -113,6 +123,20 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                 min="1"
               />
             </div>
+            {attendanceMode === 'hostel' && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="selfie-required" className="text-right col-span-2">
+                  Require Selfie
+                </Label>
+                <div className="col-span-2 flex items-center">
+                  <Switch
+                    id="selfie-required"
+                    checked={isSelfieRequired}
+                    onCheckedChange={setIsSelfieRequired}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="submit" disabled={loading}>
