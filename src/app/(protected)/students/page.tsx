@@ -39,21 +39,23 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
     const [name, setName] = useState(user.name);
     const [roll, setRoll] = useState(user.roll || '');
+    const [userType, setUserType] = useState(user.userType || 'student');
 
     const handleSave = () => {
-        onSave({ name, roll });
+        onSave({ name, roll, userType });
     }
 
     return (
         <Dialog open={true} onOpenChange={(isOpen) => !isOpen && onCancel()}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Edit Resident: {user.name}</DialogTitle>
-                    <DialogDescription>Update the resident's details below.</DialogDescription>
+                    <DialogTitle>Edit User: {user.name}</DialogTitle>
+                    <DialogDescription>Update the user's details below.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
@@ -61,8 +63,21 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
                         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" />
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="roll" className="text-right">Room Number</Label>
+                        <Label htmlFor="roll" className="text-right">ID / Room Number</Label>
                         <Input id="roll" value={roll} onChange={(e) => setRoll(e.target.value)} className="col-span-3" />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="userType" className="text-right">User Type</Label>
+                        <Select onValueChange={(v) => setUserType(v as any)} value={userType}>
+                            <SelectTrigger className="col-span-3">
+                                <SelectValue placeholder="Select user type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="student">Student</SelectItem>
+                                <SelectItem value="resident">Resident</SelectItem>
+                                <SelectItem value="both">Both</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
                 <DialogFooter>
@@ -95,19 +110,19 @@ export default function ResidentsPage() {
   }, [settings]);
 
 
-  const residentsQuery = useMemoFirebase(() => {
+  const allUsersQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled']));
   }, [firestore]);
 
-  const { data: residents, isLoading } = useCollection<UserProfile>(residentsQuery);
-  const sortedResidents = residents?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
+  const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
+  const sortedUsers = allUsers?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
 
   const handleUpdateUser = (userId: string, data: Partial<UserProfile>) => {
     if (!firestore) return;
     const userRef = doc(firestore, 'users', userId);
     updateDocumentNonBlocking(userRef, data);
-    toast({ title: "User Updated", description: "The resident's details have been saved." });
+    toast({ title: "User Updated", description: "The user's details have been saved." });
     setUserToEdit(null);
   }
 
@@ -138,11 +153,20 @@ export default function ResidentsPage() {
     });
   }
 
+  const getUserTypeBadge = (userType: UserProfile['userType']) => {
+    switch(userType) {
+        case 'student': return <Badge variant="secondary">Student</Badge>;
+        case 'resident': return <Badge variant="secondary" className="bg-blue-200 text-blue-800">Resident</Badge>;
+        case 'both': return <Badge variant="secondary" className="bg-purple-200 text-purple-800">Both</Badge>;
+        default: return <Badge variant="outline">N/A</Badge>;
+    }
+  }
+
 
   return (
     <div>
         <div className="flex items-center justify-between mb-4">
-             <h1 className="text-2xl font-bold font-headline">Resident Management</h1>
+             <h1 className="text-2xl font-bold font-headline">User Management</h1>
              <div className="flex items-center space-x-2">
                 <Switch 
                     id="registration-switch" 
@@ -154,8 +178,8 @@ export default function ResidentsPage() {
         </div>
         <Card>
             <CardHeader>
-                <CardTitle>All Residents</CardTitle>
-                <CardDescription>View, edit, and manage all resident accounts.</CardDescription>
+                <CardTitle>All Users</CardTitle>
+                <CardDescription>View, edit, and manage all user accounts.</CardDescription>
             </CardHeader>
             <CardContent>
                  {isLoading ? (
@@ -167,18 +191,20 @@ export default function ResidentsPage() {
                         <TableHeader>
                         <TableRow>
                             <TableHead>Name</TableHead>
-                            <TableHead>Room Number</TableHead>
+                            <TableHead>ID / Room Number</TableHead>
                             <TableHead>Email</TableHead>
+                            <TableHead>Type</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                         </TableHeader>
                         <TableBody>
-                        {sortedResidents.map(user => (
+                        {sortedUsers.map(user => (
                             <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.name}</TableCell>
                                 <TableCell>{user.roll || 'N/A'}</TableCell>
                                 <TableCell>{user.email}</TableCell>
+                                <TableCell>{getUserTypeBadge(user.userType)}</TableCell>
                                 <TableCell>
                                     {user.role === 'disabled' ? (
                                         <Badge variant="destructive">Disabled</Badge>
@@ -265,5 +291,3 @@ export default function ResidentsPage() {
     </div>
   );
 }
-
-    

@@ -77,28 +77,36 @@ type StoreContextType = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-function useStudents() {
+function useUsers(attendanceMode: AttendanceMode) {
     const { firestore } = useFirebase();
     const { userProfile } = useAuth();
 
-    const studentsQuery = useMemoFirebase(() => {
+    const usersQuery = useMemoFirebase(() => {
         if (userProfile?.role !== 'admin' || !firestore) return null;
-        return query(collection(firestore, 'users'), where('role', '==', 'viewer'));
-    }, [userProfile, firestore]);
+        
+        const baseQuery = query(collection(firestore, 'users'), where('role', '==', 'viewer'));
+        
+        if (attendanceMode === 'class') {
+            return query(baseQuery, where('userType', 'in', ['student', 'both']));
+        } else { // hostel mode
+            return query(baseQuery, where('userType', 'in', ['resident', 'both']));
+        }
 
-    const { data: allStudents, isLoading: areStudentsLoading } = useCollection<UserProfile>(studentsQuery);
+    }, [userProfile, firestore, attendanceMode]);
 
-    const studentsList = useMemo(() => {
+    const { data: allUsers, isLoading: areUsersLoading } = useCollection<UserProfile>(usersQuery);
+
+    const usersList = useMemo(() => {
         if (userProfile?.role === 'admin') {
-            return allStudents || [];
+            return allUsers || [];
         }
         if (userProfile?.role === 'viewer') {
             return userProfile ? [userProfile] : [];
         }
         return [];
-    }, [userProfile, allStudents]);
+    }, [userProfile, allUsers]);
 
-    return { students: studentsList, isLoading: areStudentsLoading && userProfile?.role === 'admin' };
+    return { users: usersList, isLoading: areUsersLoading && userProfile?.role === 'admin' };
 }
 
 
@@ -106,8 +114,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
-  const { students, isLoading: areStudentsLoading } = useStudents();
   const [attendanceMode, setAttendanceMode] = useState<AttendanceMode>('class');
+  const { users: students, isLoading: areStudentsLoading } = useUsers(attendanceMode);
+
 
   const sessionDocRef = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -333,6 +342,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     email: student.email,
                     role: student.role,
                     roll: student.roll,
+                    userType: student.userType
                   }, 
                   scans: Array.from({ length: payload.totalScans }, () => ({
                       status: 'absent',

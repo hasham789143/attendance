@@ -34,6 +34,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'viewer' | 'admin'>('viewer');
+  const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
   const [loading, setLoading] = useState(false);
   
   const { firestore, auth } = useFirebase();
@@ -41,7 +42,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !password || !role) {
+    if (!name || !email || !password || !role || !userType) {
       toast({
         variant: 'destructive',
         title: 'Missing Fields',
@@ -56,6 +57,8 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
     setLoading(true);
 
     try {
+        // We can't create a user with the same email in the same project.
+        // The admin should use this to create *new* users, not register existing ones in a different role.
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
@@ -65,20 +68,23 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             roll,
             email,
             role,
+            userType,
         };
 
         setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, {});
 
         toast({
             title: 'User Registered Successfully',
-            description: `${name} has been added as a ${role}.`,
+            description: `${name} has been added.`,
         });
         
+        // Reset form
         setName('');
         setRoll('');
         setEmail('');
         setPassword('');
         setRole('viewer');
+        setUserType('student');
         setOpen(false);
 
     } catch (error: any) {
@@ -86,7 +92,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
       toast({
         variant: 'destructive',
         title: 'Registration Failed',
-        description: error.message || 'An unexpected error occurred.',
+        description: error.code === 'auth/email-already-in-use' ? 'This email address is already in use.' : (error.message || 'An unexpected error occurred.'),
       });
     } finally {
       setLoading(false);
@@ -101,7 +107,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
           <DialogHeader>
             <DialogTitle>Register New User</DialogTitle>
             <DialogDescription>
-              Create a new account for a resident or another administrator.
+              Create a new account for a student, resident, or administrator.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -119,7 +125,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="roll" className="text-right">
-                Room Number
+                ID / Room No.
               </Label>
               <Input
                 id="roll"
@@ -152,19 +158,35 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
                 onChange={(e) => setPassword(e.target.value)}
                 className="col-span-3"
                 required
+                placeholder="Temporary password"
               />
             </div>
              <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="role" className="text-right">
-                Role
+                System Role
               </Label>
                 <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
                     <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="viewer">Resident</SelectItem>
+                        <SelectItem value="viewer">User (Student/Resident)</SelectItem>
                         <SelectItem value="admin">Administrator</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="userType" className="text-right">
+                User Type
+              </Label>
+                <Select onValueChange={(value) => setUserType(value as any)} value={userType}>
+                    <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Select a type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="student">Student</SelectItem>
+                        <SelectItem value="resident">Resident</SelectItem>
+                        <SelectItem value="both">Both</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -180,5 +202,3 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
     </Dialog>
   );
 }
-
-    

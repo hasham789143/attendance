@@ -15,12 +15,14 @@ import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
   const [roll, setRoll] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
   const [loading, setLoading] = useState(false);
   const { auth, firestore } = useFirebase();
   const { toast } = useToast();
@@ -41,7 +43,7 @@ export default function RegisterPage() {
         });
         return;
     }
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !userType) {
       toast({
         variant: 'destructive',
         title: 'Missing Fields',
@@ -60,6 +62,7 @@ export default function RegisterPage() {
         roll,
         email,
         role: 'viewer', // Default role for new sign-ups
+        userType,
       };
 
       // Create user profile in Firestore using the non-blocking helper
@@ -123,11 +126,11 @@ export default function RegisterPage() {
                 />
               </div>
                <div className="space-y-2">
-                <Label htmlFor="roll">Room Number (Optional)</Label>
+                <Label htmlFor="roll">ID / Room Number (Optional)</Label>
                 <Input
                   id="roll"
                   type="text"
-                  placeholder="A-101"
+                  placeholder="A-101 or 22-ABC-01"
                   value={roll}
                   onChange={(e) => setRoll(e.target.value)}
                   disabled={loading}
@@ -157,6 +160,19 @@ export default function RegisterPage() {
                   required
                 />
               </div>
+               <div className="space-y-2">
+                <Label htmlFor="userType">Registering As</Label>
+                <Select onValueChange={(v) => setUserType(v as any)} value={userType}>
+                    <SelectTrigger id="userType">
+                        <SelectValue placeholder="Select user type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="student">Student (for Class)</SelectItem>
+                        <SelectItem value="resident">Resident (for Hostel)</SelectItem>
+                        <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                </Select>
+              </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Register
@@ -174,5 +190,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-    

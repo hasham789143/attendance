@@ -32,13 +32,23 @@
             "viewer",
             "disabled"
           ]
+        },
+        "userType": {
+          "type": "string",
+          "description": "The category of the user, for attendance purposes.",
+          "enum": [
+            "student",
+            "resident",
+            "both"
+          ]
         }
       },
       "required": [
         "uid",
         "name",
         "email",
-        "role"
+        "role",
+        "userType"
       ]
     },
     "AttendanceSession": {
@@ -313,5 +323,3 @@
     }
   }
 }
-
-    

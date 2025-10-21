@@ -13,6 +13,7 @@ export interface UserProfile {
   name: string;
   email: string;
   role: 'admin' | 'viewer' | 'disabled';
+  userType: 'student' | 'resident' | 'both';
   roll?: string;
 }
 
