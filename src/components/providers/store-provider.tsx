@@ -79,18 +79,19 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
-
-    // The query is now stable and does not depend on attendanceMode.
-    // For admins, it fetches all non-admin users. For others, just their own profile.
+    
+    // For admins, fetch all non-admin users. For others, just fetch their own profile.
     const usersQuery = useMemoFirebase(() => {
         if (!firestore || !userProfile) return null;
         
         const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
         if (userProfile?.role === 'admin') {
+           // This is stable and does not depend on attendanceMode, which prevents loops.
            return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
         }
         
+        // For non-admins, the query is also stable.
         return query(baseQuery, where('uid', '==', userProfile.uid));
 
     }, [firestore, userProfile]);
@@ -147,7 +148,6 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
         const relevantUserTypes = attendanceMode === 'class' ? ['student', 'both'] : ['resident', 'both'];
         return allUsers.filter(u => relevantUserTypes.includes(u.userType));
     }
-    // For non-admins, usersForSession is just themselves (already filtered by useUsers hook)
     return allUsers;
   }, [userProfile, allUsers, attendanceMode]);
   
@@ -224,11 +224,11 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
     if (session.status !== 'active' || areUsersLoading || usersForSession.length === 0) {
-        if (session.status === 'inactive' || session.status === 'ended') {
-            setAttendance(new Map());
-        }
-        return;
-    };
+      if ((session.status === 'inactive' || session.status === 'ended') && attendance.size > 0) {
+        setAttendance(new Map());
+      }
+      return;
+    }
 
     const newAttendance = new Map<string, AttendanceRecord>();
     const newDevices = new Map<number, Set<string>>();
@@ -273,7 +273,7 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
     setAttendance(newAttendance);
     setDevicesInUse(newDevices);
     
-  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading]);
+  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading, attendance]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -727,3 +727,4 @@ export const useStore = () => {
   }
   return context;
 };
+
