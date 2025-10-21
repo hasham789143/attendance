@@ -64,6 +64,7 @@ type StoreContextType = {
   session: Session;
   attendance: AttendanceMap;
   usersForSession: UserProfile[];
+  students: UserProfile[]; // The stable, complete list of all students/residents.
   startSession: (payload: StartSessionPayload) => Promise<void>;
   endSession: () => void;
   markAttendance: (payload: MarkAttendancePayload) => Promise<boolean>;
@@ -86,12 +87,14 @@ function useUsers(userProfile: UserProfile | null) {
         
         const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
-        if (userProfile?.role === 'admin') {
-           // Fetch all user types an admin might manage. Filtering happens later.
-           return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
+        // For students/residents, only fetch their own profile.
+        if (userProfile?.role !== 'admin') {
+           return query(baseQuery, where('uid', '==', userProfile.uid));
         }
         
-        return query(baseQuery, where('uid', '==', userProfile.uid));
+        // For admins, fetch all user types they might manage.
+        // This query is stable and doesn't depend on the attendanceMode toggle.
+        return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
 
     }, [firestore, userProfile]);
 
@@ -216,7 +219,7 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
           isSelfieRequired: false,
         });
     }
-  }, [dbSession]);
+  }, [dbSession, session.status]);
 
   // Effect to sync local attendance map from live Firestore records
   useEffect(() => {
@@ -270,7 +273,7 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
     setAttendance(newAttendance);
     setDevicesInUse(newDevices);
     
-  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading]);
+  }, [liveRecords, usersForSession, session.totalScans, session.status, areUsersLoading, attendance.size]);
 
 
   const generateNewCode = (prefix: string) => {
@@ -685,6 +688,7 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
   const value = useMemo(() => ({
     session,
     usersForSession, 
+    students: allUsers.filter(u => u.role === 'viewer'), // Provide the stable list of all students
     attendance,
     startSession,
     endSession,
@@ -698,6 +702,7 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
   }), [
     session,
     usersForSession,
+    allUsers,
     attendance,
     startSession,
     endSession,
