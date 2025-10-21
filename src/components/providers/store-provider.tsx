@@ -77,31 +77,28 @@ type StoreContextType = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-function useUsers(attendanceMode: AttendanceMode) {
+function useUsers() {
     const { firestore } = useFirebase();
     const { userProfile } = useAuth();
 
+    // The query is now stable and does not depend on attendanceMode.
+    // For admins, it fetches all non-admin users. For others, just their own profile.
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         
-        let baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
+        const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
         
-        // Admins should fetch all users relevant to the mode
         if (userProfile?.role === 'admin') {
-            if (attendanceMode === 'class') {
-                return query(baseQuery, where('userType', 'in', ['student', 'both']));
-            }
-            return query(baseQuery, where('userType', 'in', ['resident', 'both']));
+           return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
         }
         
-        // Viewers should only fetch their own profile
         if (userProfile) {
            return query(baseQuery, where('uid', '==', userProfile.uid));
         }
 
-        return null; // No user, no query
+        return null; 
 
-    }, [firestore, attendanceMode, userProfile]);
+    }, [firestore, userProfile]);
 
     const { data: users, isLoading } = useCollection<UserProfile>(usersQuery);
 
@@ -114,7 +111,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
   const [attendanceMode, setAttendanceModeState] = useState<AttendanceMode>('class');
-  const { users: allUsersInMode, isLoading: areUsersLoading } = useUsers(attendanceMode);
+  const { users: allUsers, isLoading: areUsersLoading } = useUsers();
 
 
   const sessionDocRef = useMemoFirebase(() => {
@@ -147,15 +144,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [attendance, setAttendance] = useState<AttendanceMap>(new Map());
   const [devicesInUse, setDevicesInUse] = useState<Map<number, Set<string>>>(new Map());
   
-  const usersForSession = useMemo(() => {
-    if (userProfile?.role === 'admin') return allUsersInMode;
-    // For non-admins, usersForSession is just themselves
-    return allUsersInMode.filter(u => u.uid === userProfile?.uid);
-  }, [userProfile, allUsersInMode]);
-  
   const setAttendanceMode = useCallback((mode: AttendanceMode) => {
     setAttendanceModeState(mode);
   }, []);
+
+  const usersForSession = useMemo(() => {
+    if (userProfile?.role === 'admin') {
+        const relevantUserTypes = attendanceMode === 'class' ? ['student', 'both'] : ['resident', 'both'];
+        return allUsers.filter(u => relevantUserTypes.includes(u.userType));
+    }
+    // For non-admins, usersForSession is just themselves (already filtered by useUsers hook)
+    return allUsers;
+  }, [userProfile, allUsers, attendanceMode]);
+  
 
   // Effect to sync local session state from the main session document
   useEffect(() => {
@@ -297,7 +298,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast({ variant: 'destructive', title: 'Location Error', description: 'Geolocation is not supported by your browser.' });
       return;
     }
-    const usersToEnroll = allUsersInMode.filter(u => u.role !== 'admin');
+    const usersToEnroll = usersForSession.filter(u => u.role !== 'admin');
     if (!firestore || !userProfile || !sessionDocRef || usersToEnroll.length === 0) {
         toast({ variant: 'destructive', title: 'Error', description: 'Could not start session. Ensure residents are loaded and you have permissions.' });
         return;
@@ -328,9 +329,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
     
           if (payload.totalScans >= 2) {
+              const { qrCodeValue: secondKey } = generateNewCode('scan2');
+              sessionData.secondKey = secondKey;
               sessionData.secondScanLateAfterMinutes = payload.lateAfterMinutes;
           }
           if (payload.totalScans === 3) {
+            const { qrCodeValue: thirdKey } = generateNewCode('scan3');
+            sessionData.thirdKey = thirdKey;
             sessionData.thirdScanLateAfterMinutes = payload.lateAfterMinutes;
           }
           
@@ -381,7 +386,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           reject(error);
       });
     });
-  }, [toast, firestore, userProfile, sessionDocRef, allUsersInMode, attendanceMode]);
+  }, [toast, firestore, userProfile, sessionDocRef, usersForSession, attendanceMode]);
   
  const endSession = useCallback(async () => {
     if (!sessionDocRef || !dbSession || !firestore) return;
@@ -591,16 +596,21 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
     }
 
     try {
-        const { qrCodeValue } = generateNewCode(`scan${nextScanNumber}`);
-        
         let keyFieldToUpdate: 'secondKey' | 'thirdKey';
-        if (nextScanNumber === 2) keyFieldToUpdate = 'secondKey';
-        else if (nextScanNumber === 3) keyFieldToUpdate = 'thirdKey';
+        let newKey = '';
+        if (nextScanNumber === 2) {
+          keyFieldToUpdate = 'secondKey';
+          newKey = dbSession.secondKey || generateNewCode(`scan${nextScanNumber}`).qrCodeValue;
+        }
+        else if (nextScanNumber === 3) {
+          keyFieldToUpdate = 'thirdKey';
+          newKey = dbSession.thirdKey || generateNewCode(`scan${nextScanNumber}`).qrCodeValue;
+        }
         else return;
         
         const updatePayload: any = { 
             currentScan: nextScanNumber,
-            [keyFieldToUpdate]: qrCodeValue
+            [keyFieldToUpdate]: newKey
         };
         
         const batch = writeBatch(firestore);
@@ -612,7 +622,7 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
           recordsSnapshot.forEach(recordDoc => {
             const recordData = recordDoc.data();
             const updatedScans = [...recordData.scans];
-            if (updatedScans[nextScanNumber - 1]) {
+            if (updatedScans[nextScanNumber - 1] && !updatedScans[nextScanNumber - 1].uniqueScanKey) {
               updatedScans[nextScanNumber - 1].uniqueScanKey = Math.random().toString(36).substring(2, 12).toUpperCase();
             }
             batch.update(recordDoc.ref, { scans: updatedScans });
@@ -663,6 +673,7 @@ const uploadSelfies = useCallback(async (studentId: string, photoURLs: string[])
     if (approved) {
         const updatedScans = [...studentRecord.scans];
         updatedScans[0] = {
+            ...updatedScans[0],
             status: 'present',
             minutesLate: 0,
             timestamp: new Date().toISOString(),
@@ -722,3 +733,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    

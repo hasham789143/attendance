@@ -1,3 +1,4 @@
+
 'use client';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,7 @@ import { Label } from '../ui/label';
 
 
 function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'left_early' }) {
-  const { attendance, session, handleCorrectionRequest } = useStore();
+  const { attendance, session, handleCorrectionRequest, attendanceMode } = useStore();
   const [requestToReview, setRequestToReview] = useState<AttendanceRecord | null>(null);
   const { t, language } = useTranslation();
 
@@ -35,10 +36,16 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
       
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-      // If any scan is still 'absent' but at least one is present, they left early
-      if (record.scans.some(s => s.status === 'absent')) return 'left_early';
+      
+      if (attendanceMode === 'class' && scansCompleted > 0 && scansCompleted < record.scans.length) {
+        return 'left_early';
+      }
+
       if (record.scans.some(s => s.status === 'late')) return 'late';
-      return 'present';
+
+      if (scansCompleted === record.scans.length) return 'present';
+      
+      return 'absent';
   };
 
   const filteredAttendance = useMemo(() => {
@@ -46,7 +53,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
       return sortedAttendance;
     }
     return sortedAttendance.filter(record => getFinalStatus(record) === filter);
-  }, [filter, sortedAttendance]);
+  }, [filter, sortedAttendance, attendanceMode]);
 
   const getStatusBadge = (record: AttendanceRecord) => {
     const finalStatus = getFinalStatus(record);
@@ -217,9 +224,16 @@ export function AdminDashboard() {
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
-      if (attendanceMode === 'class' && record.scans.some(s => s.status === 'absent')) return 'left_early';
+      
+      if (attendanceMode === 'class' && scansCompleted > 0 && scansCompleted < record.scans.length) {
+        return 'left_early';
+      }
+      
       if (record.scans.some(s => s.status === 'late')) return 'late';
-      return 'present';
+      
+      if (scansCompleted === record.scans.length) return 'present';
+      
+      return 'absent';
   };
   
   const { present, absent, leftEarly } = useMemo(() => {
@@ -390,3 +404,5 @@ export function AdminDashboard() {
 
 // Helper type
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
+
+    
