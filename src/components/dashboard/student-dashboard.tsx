@@ -1,3 +1,4 @@
+
 'use client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useStore, AttendanceRecord } from '@/components/providers/store-provider';
@@ -304,7 +305,7 @@ export function StudentDashboard() {
                 <Card className="p-3 w-fit">
                     {isInRange === null && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin"/> Checking location...</div>}
                     {isInRange === true && <div className="flex items-center gap-2 text-green-600 font-semibold"><Wifi className="h-4 w-4"/> In Range ({distance?.toFixed(0)}m away)</div>}
-                    {isInRange === false && <div className="flex items-center gap-2 text-destructive font-semibold"><WifiOff className="h-4 w-4"/> Out of Range</div>}
+                    {isInRange === false && <div className="flex items-center gap-2 text-destructive font-semibold"><WifiOff className="h-4 w-4"/> Out of Range ({distance?.toFixed(0)}m away)</div>}
                 </Card>
             )}
         </CardHeader>
@@ -386,3 +387,5 @@ export function StudentDashboard() {
     </div>
   );
 }
+
+    
