@@ -258,7 +258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         currentScan: 1,
         lateAfterMinutes: lateAfterMinutes,
         secondScanLateAfterMinutes: lateAfterMinutes,
-        thirdScanLateAfterMinutes: totalScans === 3 ? lateAfterMinutes : null,
+        thirdScanLateAfterMinutes: totalScans === 3 ? lateAfterMinutes : undefined,
         radius: radius,
       }
       
@@ -324,9 +324,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const sessionToArchive: Partial<AttendanceSession> = {
           ...dbSession,
           key: dbSession.key,
-          secondKey: dbSession.secondKey || null,
-          thirdKey: dbSession.thirdKey || null,
-          thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes || null,
+          secondKey: dbSession.secondKey || undefined,
+          thirdKey: dbSession.thirdKey || undefined,
+          thirdScanLateAfterMinutes: dbSession.thirdScanLateAfterMinutes || undefined,
           radius: dbSession.radius || 100,
         };
         archiveBatch.set(archiveSessionRef, sessionToArchive);
