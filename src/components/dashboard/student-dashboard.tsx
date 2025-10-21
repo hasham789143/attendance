@@ -6,14 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, QrCode, CheckCircle, Send, ShieldAlert, Wifi, WifiOff, Camera } from 'lucide-react';
+import { Loader2, QrCode, CheckCircle, Send, ShieldAlert, Wifi, WifiOff, Camera, School, Building } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
-import { getDeviceId, getScanLabel, getDistance } from '@/lib/utils';
+import { getDeviceId, getScanLabel, getDistance, cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
 
 function CorrectionRequestDialog({ onSend, onCancel }: { onSend: (reason: string) => void, onCancel: () => void }) {
     const [reason, setReason] = useState('');
@@ -55,7 +56,7 @@ function CorrectionRequestDialog({ onSend, onCancel }: { onSend: (reason: string
 
 export function StudentDashboard() {
   const { userProfile } = useAuth();
-  const { session, attendance, markAttendance, requestCorrection, attendanceMode } = useStore();
+  const { session, attendance, markAttendance, requestCorrection, attendanceMode, setAttendanceMode } = useStore();
   const [isLoading, setIsLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannedData, setScannedData] = useState<string | null>(null);
@@ -78,7 +79,13 @@ export function StudentDashboard() {
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    // If user is not 'both', ensure they are in the correct mode.
+    if (userProfile?.userType === 'student') {
+        setAttendanceMode('class');
+    } else if (userProfile?.userType === 'resident') {
+        setAttendanceMode('hostel');
+    }
+  }, [userProfile, setAttendanceMode]);
 
   const myRecord = userProfile ? attendance.get(userProfile.uid) : undefined;
 
@@ -144,7 +151,7 @@ export function StudentDashboard() {
       resetScanner();
       return;
     }
-    if (!isInRange) {
+    if (isInRange === false) {
       toast({ variant: 'destructive', title: 'Out of Range', description: 'You are not in the allowed area to mark attendance.' });
       return;
     }
@@ -170,9 +177,7 @@ export function StudentDashboard() {
     const resultData = Array.isArray(result) ? result[0]?.rawValue : result?.rawValue;
     if (resultData && !scannedData) {
       setScannedData(resultData);
-      if (attendanceMode === 'hostel' && session.isSelfieRequired) {
-        processScan(resultData);
-      }
+      processScan(resultData);
     }
   };
 
@@ -209,7 +214,7 @@ export function StudentDashboard() {
     if (session.status === 'inactive' || session.status === 'ended') {
       return (
         <div className="text-center">
-            <p className="text-muted-foreground">No session is currently active.</p>
+            <p className="text-muted-foreground">No session is currently active for {attendanceMode}s.</p>
         </div>
       )
     }
@@ -296,7 +301,7 @@ export function StudentDashboard() {
   }
 
   const processHostelCheckin = async (code: string) => {
-    if (!userProfile || !isInRange) return;
+    if (!userProfile || isInRange === false) return;
     setIsLoading(true);
     
     // The code is valid, now we just need to take pictures.
@@ -401,7 +406,6 @@ export function StudentDashboard() {
       )}
       <div className="flex w-full gap-2 mt-4">
         <Button onClick={resetScanner} className="w-full" variant="outline" disabled={isLoading}>Cancel</Button>
-        {scannedData && <Button onClick={() => processScan(scannedData)} className="w-full" disabled={!isInRange}>Done</Button>}
       </div>
     </>
   );
@@ -457,9 +461,22 @@ export function StudentDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold font-headline">Resident Dashboard</h1>
-        <p className="text-muted-foreground">Welcome, {userProfile?.name}.</p>
+      <div className="flex justify-between items-center">
+        <div>
+            <h1 className="text-2xl font-bold font-headline">{attendanceMode === 'class' ? 'Student' : 'Resident'} Dashboard</h1>
+            <p className="text-muted-foreground">Welcome, {userProfile?.name}.</p>
+        </div>
+        {userProfile?.userType === 'both' && (
+             <div className="flex items-center space-x-2">
+                <School className={cn("h-6 w-6", attendanceMode === 'hostel' && 'text-muted-foreground')} />
+                <Switch
+                    id="attendance-mode-student"
+                    checked={attendanceMode === 'hostel'}
+                    onCheckedChange={(checked) => setAttendanceMode(checked ? 'hostel' : 'class')}
+                />
+                <Building className={cn("h-6 w-6", attendanceMode === 'class' && 'text-muted-foreground')} />
+            </div>
+        )}
       </div>
 
        {hasCameraPermission === false && (
@@ -494,7 +511,7 @@ export function StudentDashboard() {
                 <CardTitle>Current Session Status</CardTitle>
                 <CardDescription>
                     {session.status !== 'active'
-                    ? 'There is no active attendance session.'
+                    ? `There is no active ${attendanceMode} attendance session.`
                     : `Session is active. Current scan: ${getScanLabel(session.currentScan)} of ${session.totalScans}`}
                 </CardDescription>
             </div>
@@ -519,7 +536,7 @@ export function StudentDashboard() {
                     {renderScannerContent()}
                   </div>
                 ) : (
-                  <Button onClick={handleScanButtonClick} size="lg" disabled={isLoading}>
+                  <Button onClick={handleScanButtonClick} size="lg" disabled={isLoading || isInRange === false}>
                     {attendanceMode === 'hostel' && session.isSelfieRequired 
                       ? <><QrCode className="mr-2 h-5 w-5" />Scan to Start Check-in</>
                       : <><QrCode className="mr-2 h-5 w-5" />Scan QR Code for {getScanLabel(session.currentScan)}</>
