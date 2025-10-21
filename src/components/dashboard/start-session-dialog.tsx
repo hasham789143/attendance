@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -42,8 +43,8 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
     }
     
     await startSession({
-      lateAfterMinutes: minutes, 
-      subject, 
+      lateAfterMinutes: attendanceMode === 'hostel' ? 0 : minutes, 
+      subject: attendanceMode === 'hostel' ? 'Hostel Roll Call' : subject, 
       totalScans: scans, 
       radius: radiusMeters,
       isSelfieRequired: attendanceMode === 'hostel' ? isSelfieRequired : false
@@ -66,20 +67,22 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="subject" className="text-right">
-                Title
-              </Label>
-              <Input
-                id="subject"
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="col-span-3"
-                placeholder={attendanceMode === 'class' ? "e.g. Physics 101" : "e.g. Evening Roll Call"}
-                required
-              />
-            </div>
+            {attendanceMode === 'class' && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="subject" className="text-right">
+                  Title
+                </Label>
+                <Input
+                  id="subject"
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="col-span-3"
+                  placeholder="e.g. Physics 101"
+                  required
+                />
+              </div>
+            )}
              <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="totalScans" className="text-right">
                 Total Scans
@@ -95,20 +98,22 @@ export function StartSessionDialog({ children }: { children: React.ReactNode }) 
                   </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="lateAfter" className="text-right col-span-2">
-                Late After (minutes)
-              </Label>
-              <Input
-                id="lateAfter"
-                type="number"
-                value={lateAfterMinutes}
-                onChange={(e) => setLateAfterMinutes(e.target.value)}
-                className="col-span-2"
-                required
-                min="0"
-              />
-            </div>
+            {attendanceMode === 'class' && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="lateAfter" className="text-right col-span-2">
+                  Late After (minutes)
+                </Label>
+                <Input
+                  id="lateAfter"
+                  type="number"
+                  value={lateAfterMinutes}
+                  onChange={(e) => setLateAfterMinutes(e.target.value)}
+                  className="col-span-2"
+                  required
+                  min="0"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="radius" className="text-right col-span-2">
                 Radius (meters)
