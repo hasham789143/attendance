@@ -36,8 +36,7 @@ export default function LoginPage() {
       toast({ title: 'Login Successful', description: 'Redirecting to your dashboard...'});
       router.push('/dashboard');
     } catch (error: any) {
-      console.error('Login Error:', error);
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+      if (error.code === 'auth/invalid-credential') {
         setError('Invalid email or password.');
       } else {
         setError(error.message || 'An unexpected error occurred.');
