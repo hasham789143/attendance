@@ -34,7 +34,7 @@ type ChatMessage = {
 export default function ChatPage() {
   const { userProfile } = useAuth();
   const { firestore } = useFirebase();
-  const { students } = useStore();
+  const { students } = useStore(); // Use the stable, complete list of students
   const { toast } = useToast();
   
   const [selectedStudentUid, setSelectedStudentUid] = useState<string>('');
@@ -44,12 +44,12 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMessagesCount = useRef(0);
 
-
+  // This effect correctly sets the initial chat context for both admins and students.
   useEffect(() => {
     if (userProfile?.role === 'viewer') {
       setSelectedStudentUid(userProfile.uid);
-    } else if (students && students.length > 0 && !selectedStudentUid) {
-      // Default to the first student if none is selected
+    } else if (userProfile?.role === 'admin' && students && students.length > 0 && !selectedStudentUid) {
+      // For admins, default to the first student in the list if no one is selected yet.
       setSelectedStudentUid(students[0].uid);
     }
   }, [userProfile, students, selectedStudentUid]);
@@ -77,9 +77,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (messages && messages.length > prevMessagesCount.current) {
         const latestMessage = messages[messages.length - 1];
-        // Don't notify the user about their own messages
         if (latestMessage && latestMessage.senderUid !== userProfile?.uid) {
-            // Only show toast if the user is not actively viewing the tab
              if (document.visibilityState !== 'visible') {
                 toast({
                     title: `New Message from ${latestMessage.senderName}`,
@@ -90,7 +88,6 @@ export default function ChatPage() {
     }
     prevMessagesCount.current = messages ? messages.length : 0;
   }, [messages, userProfile?.uid, toast]);
-
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
