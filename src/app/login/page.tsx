@@ -18,18 +18,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { auth } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null); // Clear previous errors
     if (!email || !password) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing Fields',
-        description: 'Please enter both email and password.',
-      });
+      setError('Please enter both email and password.');
       return;
     }
     setLoading(true);
@@ -39,23 +37,25 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (error: any) {
       console.error('Login Error:', error);
-      if (error.code === 'auth/invalid-credential') {
-        toast({
-            variant: 'destructive',
-            title: 'Login Failed',
-            description: 'Invalid email or password.',
-        });
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        setError('Invalid email or password.');
       } else {
-        toast({
-            variant: 'destructive',
-            title: 'Login Failed',
-            description: error.message || 'An unexpected error occurred.',
-        });
+        setError(error.message || 'An unexpected error occurred.');
       }
     } finally {
       setLoading(false);
     }
   };
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value);
+    if (error) setError(null);
+  }
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value);
+    if (error) setError(null);
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -74,7 +74,7 @@ export default function LoginPage() {
                 type="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={handleEmailChange}
                 disabled={loading}
                 required
               />
@@ -94,7 +94,7 @@ export default function LoginPage() {
                         id="password"
                         type={showPassword ? 'text' : 'password'}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={handlePasswordChange}
                         disabled={loading}
                         required
                     />
@@ -114,7 +114,14 @@ export default function LoginPage() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Login
             </Button>
-            <div className="text-center text-sm text-muted-foreground">
+
+            {error && (
+              <p className="text-sm font-medium text-destructive text-center">
+                {error}
+              </p>
+            )}
+            
+            <div className="text-center text-sm text-muted-foreground pt-2">
               Don't have an account?{' '}
               <Link href="/register" className="underline hover:text-primary">
                 Register
