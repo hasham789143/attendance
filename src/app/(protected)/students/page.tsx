@@ -1,9 +1,9 @@
 
 'use client';
-import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking, useDoc } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
+import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
-import { Loader2, MoreHorizontal, Pen, Trash2, UserCog, UserX, CheckCircle, Ban } from 'lucide-react';
+import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban } from 'lucide-react';
 import { UserProfile, useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -40,6 +40,7 @@ import { useToast } from '@/hooks/use-toast.tsx';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { setRegistrationStatus } from '@/ai/flows/set-registration-status.flow';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
     const [name, setName] = useState(user.name);
@@ -109,7 +110,8 @@ export default function ResidentsPage() {
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
   
   useEffect(() => {
-    if (settings) {
+    // Check settings are not undefined or null before updating state
+    if (settings !== undefined && settings !== null) {
       setIsRegistrationOpen(settings.isRegistrationOpen);
     }
   }, [settings]);
@@ -123,42 +125,48 @@ export default function ResidentsPage() {
   const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
   const sortedUsers = allUsers?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
 
-  const handleUpdateUser = (userId: string, data: Partial<UserProfile>) => {
+  const handleUpdateUser = async (userId: string, data: Partial<UserProfile>) => {
     if (!firestore) return;
     const userRef = doc(firestore, 'users', userId);
-    updateDocumentNonBlocking(userRef, data);
+    await updateDoc(userRef, data);
     toast({ title: "User Updated", description: "The user's details have been saved." });
     setUserToEdit(null);
   }
 
-  const handleToggleStatus = () => {
+  const handleToggleStatus = async () => {
     if (!firestore || !userToToggleStatus) return;
     const userRef = doc(firestore, 'users', userToToggleStatus.uid);
     const newRole = userToToggleStatus.role === 'disabled' ? 'viewer' : 'disabled';
-    updateDocumentNonBlocking(userRef, { role: newRole });
+    await updateDoc(userRef, { role: newRole });
     toast({ title: `User ${newRole === 'viewer' ? 'Enabled' : 'Disabled'}`, description: `${userToToggleStatus.name}'s account has been updated.` });
     setUserToToggleStatus(null);
   }
   
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!firestore || !userToDelete) return;
     const userRef = doc(firestore, 'users', userToDelete.uid);
-    deleteDocumentNonBlocking(userRef);
+    await deleteDoc(userRef);
     toast({ title: "User Deleted", description: `${userToDelete.name} has been removed.` });
     setUserToDelete(null);
   }
 
-  const handleToggleRegistration = (isOpen: boolean) => {
-    if (!settingsDocRef || !userProfile) return;
-    setIsRegistrationOpen(isOpen);
-    updateDocumentNonBlocking(settingsDocRef, { 
-      isRegistrationOpen: isOpen,
-      adminUid: userProfile.uid 
-    });
-    toast({
-      title: `Registration ${isOpen ? 'Enabled' : 'Disabled'}`,
-      description: `New users can ${isOpen ? '' : 'no longer'} register.`,
-    });
+  const handleToggleRegistration = async (isOpen: boolean) => {
+    if (!userProfile) return;
+    setIsRegistrationOpen(isOpen); // Optimistic UI update
+    try {
+        await setRegistrationStatus({ isOpen, adminUid: userProfile.uid });
+        toast({
+          title: `Registration ${isOpen ? 'Enabled' : 'Disabled'}`,
+          description: `New users can ${isOpen ? '' : 'no longer'} register.`,
+        });
+    } catch(e: any) {
+        setIsRegistrationOpen(!isOpen); // Revert on error
+        toast({
+            variant: 'destructive',
+            title: 'Permission Denied',
+            description: 'You do not have permission to perform this action.'
+        });
+    }
   }
 
   const getUserTypeBadge = (userType: UserProfile['userType']) => {

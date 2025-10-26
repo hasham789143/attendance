@@ -59,6 +59,8 @@ export function addDocumentNonBlocking(colRef: CollectionReference, data: any) {
 export function updateDocumentNonBlocking(docRef: DocumentReference, data: any) {
   updateDoc(docRef, data)
     .catch(error => {
+      // This is a generic error handler. Specific flows might need more context.
+      // For permission errors, we create a rich, contextual error object.
       errorEmitter.emit(
         'permission-error',
         new FirestorePermissionError({
