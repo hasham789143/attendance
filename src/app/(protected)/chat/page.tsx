@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, addDoc, serverTimestamp, where, updateDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { useStore } from '@/components/providers/store-provider';
 import { useToast } from '@/hooks/use-toast.tsx';
+import { useChat } from '@/components/providers/chat-provider';
+
 
 type ChatMessage = {
   id?: string;
@@ -29,13 +31,15 @@ type ChatMessage = {
   senderName: string;
   senderRole: 'admin' | 'viewer';
   timestamp: any; // Firestore timestamp or Date
+  isRead: boolean;
 };
 
 export default function ChatPage() {
   const { userProfile } = useAuth();
   const { firestore } = useFirebase();
-  const { students } = useStore(); // Use the stable, complete list of students
+  const { students } = useStore();
   const { toast } = useToast();
+  const { setActiveChatStudentUid } = useChat();
   
   const [selectedStudentUid, setSelectedStudentUid] = useState<string>('');
   const [message, setMessage] = useState('');
@@ -43,15 +47,23 @@ export default function ChatPage() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // This effect correctly sets the initial chat context for both admins and students.
+  // Effect to set initial state and update active chat in context
   useEffect(() => {
     if (userProfile?.role === 'viewer') {
       setSelectedStudentUid(userProfile.uid);
+      setActiveChatStudentUid(userProfile.uid);
     } else if (userProfile?.role === 'admin' && students && students.length > 0 && !selectedStudentUid) {
-      // For admins, default to the first student in the list if no one is selected yet.
-      setSelectedStudentUid(students[0].uid);
+      const firstStudentUid = students[0].uid;
+      setSelectedStudentUid(firstStudentUid);
+      setActiveChatStudentUid(firstStudentUid);
     }
-  }, [userProfile, students, selectedStudentUid]);
+  }, [userProfile, students, selectedStudentUid, setActiveChatStudentUid]);
+  
+  // Update active chat when admin selects a different student
+  const handleStudentSelect = (studentUid: string) => {
+    setSelectedStudentUid(studentUid);
+    setActiveChatStudentUid(studentUid);
+  }
 
   const chatCollectionRef = useMemoFirebase(() => {
     if (!firestore || !selectedStudentUid) return null;
@@ -83,6 +95,7 @@ export default function ChatPage() {
       senderUid: userProfile.uid,
       senderName: userProfile.name,
       senderRole: userProfile.role,
+      isRead: false,
     };
 
      try {
@@ -127,7 +140,7 @@ export default function ChatPage() {
                         {selectedStudentUid ? `Chatting with ${getStudentName(selectedStudentUid)}` : 'Select a student to start chatting.'}
                     </CardDescription>
                 </div>
-                <Select onValueChange={setSelectedStudentUid} value={selectedStudentUid}>
+                <Select onValueChange={handleStudentSelect} value={selectedStudentUid}>
                     <SelectTrigger className="w-[280px]">
                         <SelectValue placeholder="Select a student" />
                     </SelectTrigger>
