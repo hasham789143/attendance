@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/components/providers/auth-provider';
@@ -8,6 +9,7 @@ import { Header } from '@/components/layout/header';
 import { MainSidebar } from '@/components/layout/main-sidebar';
 import { StoreProvider } from '@/components/providers/store-provider';
 import { TranslationProvider } from '@/components/providers/translation-provider';
+import { ChatProvider } from '@/components/providers/chat-provider';
 
 export default function ProtectedLayout({
   children,
