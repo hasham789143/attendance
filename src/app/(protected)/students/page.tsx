@@ -100,14 +100,13 @@ export default function ResidentsPage() {
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   
   const settingsDocRef = useMemoFirebase(() => {
-    // Only create the doc ref if firestore and userProfile are available
     if (!firestore || !userProfile) return null;
     return doc(firestore, 'settings', 'attendance');
   }, [firestore, userProfile]);
 
   const { data: settings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
-  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
   
   useEffect(() => {
     if (settings) {
@@ -152,7 +151,6 @@ export default function ResidentsPage() {
   const handleToggleRegistration = (isOpen: boolean) => {
     if (!settingsDocRef || !userProfile) return;
     setIsRegistrationOpen(isOpen);
-    // Pass admin UID to be verified by security rules
     updateDocumentNonBlocking(settingsDocRef, { 
       isRegistrationOpen: isOpen,
       adminUid: userProfile.uid 
