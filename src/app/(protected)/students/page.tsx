@@ -101,20 +101,16 @@ export default function ResidentsPage() {
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   
   const settingsDocRef = useMemoFirebase(() => {
-    if (!firestore || !userProfile) return null;
+    if (!firestore) return null;
     return doc(firestore, 'settings', 'attendance');
-  }, [firestore, userProfile]);
+  }, [firestore]);
 
-  const { data: settings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
+  const { data: settings, isLoading: isLoadingSettings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
-  const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
-  
-  useEffect(() => {
-    // Check settings are not undefined or null before updating state
-    if (settings !== undefined && settings !== null) {
-      setIsRegistrationOpen(settings.isRegistrationOpen);
-    }
-  }, [settings]);
+  // The state of the switch is now derived directly from the fetched settings.
+  // It defaults to true if settings are not yet loaded or don't exist.
+  const isRegistrationOpen = settings?.isRegistrationOpen ?? true;
+  const [isUpdating, setIsUpdating] = useState(false);
 
 
   const allUsersQuery = useMemoFirebase(() => {
@@ -152,7 +148,7 @@ export default function ResidentsPage() {
 
   const handleToggleRegistration = async (isOpen: boolean) => {
     if (!userProfile) return;
-    setIsRegistrationOpen(isOpen); // Optimistic UI update
+    setIsUpdating(true);
     try {
         await setRegistrationStatus({ isOpen, adminUid: userProfile.uid });
         toast({
@@ -160,12 +156,13 @@ export default function ResidentsPage() {
           description: `New users can ${isOpen ? '' : 'no longer'} register.`,
         });
     } catch(e: any) {
-        setIsRegistrationOpen(!isOpen); // Revert on error
         toast({
             variant: 'destructive',
             title: 'Permission Denied',
             description: 'You do not have permission to perform this action.'
         });
+    } finally {
+        setIsUpdating(false);
     }
   }
 
@@ -184,11 +181,14 @@ export default function ResidentsPage() {
         <div className="flex items-center justify-between mb-4">
              <h1 className="text-2xl font-bold font-headline">User Management</h1>
              <div className="flex items-center space-x-2">
-                <Switch 
-                    id="registration-switch" 
-                    checked={isRegistrationOpen}
-                    onCheckedChange={handleToggleRegistration}
-                />
+                {isLoadingSettings ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+                    <Switch 
+                        id="registration-switch" 
+                        checked={isRegistrationOpen}
+                        onCheckedChange={handleToggleRegistration}
+                        disabled={isUpdating}
+                    />
+                )}
                 <Label htmlFor="registration-switch">Allow Registration</Label>
             </div>
         </div>
