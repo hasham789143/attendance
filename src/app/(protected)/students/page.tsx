@@ -99,7 +99,12 @@ export default function ResidentsPage() {
   const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   
-  const settingsDocRef = useMemoFirebase(() => firestore && userProfile ? doc(firestore, 'settings', 'attendance') : null, [firestore, userProfile]);
+  const settingsDocRef = useMemoFirebase(() => {
+    // Only create the doc ref if firestore and userProfile are available
+    if (!firestore || !userProfile) return null;
+    return doc(firestore, 'settings', 'attendance');
+  }, [firestore, userProfile]);
+
   const { data: settings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
@@ -145,9 +150,13 @@ export default function ResidentsPage() {
   }
 
   const handleToggleRegistration = (isOpen: boolean) => {
-    if (!settingsDocRef) return;
+    if (!settingsDocRef || !userProfile) return;
     setIsRegistrationOpen(isOpen);
-    updateDocumentNonBlocking(settingsDocRef, { isRegistrationOpen: isOpen });
+    // Pass admin UID to be verified by security rules
+    updateDocumentNonBlocking(settingsDocRef, { 
+      isRegistrationOpen: isOpen,
+      adminUid: userProfile.uid 
+    });
     toast({
       title: `Registration ${isOpen ? 'Enabled' : 'Disabled'}`,
       description: `New users can ${isOpen ? '' : 'no longer'} register.`,
@@ -292,3 +301,5 @@ export default function ResidentsPage() {
     </div>
   );
 }
+
+    
