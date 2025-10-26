@@ -113,6 +113,10 @@
         "subject": {
           "type": "string",
           "description": "The subject of the class session."
+        },
+         "isSelfieRequired": {
+          "type": "boolean",
+          "description": "Whether a selfie is required for this session (hostel mode)."
         }
       },
       "required": [
@@ -151,8 +155,17 @@
         "deviceId": {
           "type": "string"
         },
-        "photoURL": {
-          "type": "string"
+        "photoURLs": {
+          "type": "array",
+           "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "URLs of the captured selfies for this scan."
+        },
+        "uniqueScanKey": {
+            "type": "string",
+            "description": "A unique, one-time key for a specific student's scan in hostel mode."
         }
       },
       "required": [
@@ -264,7 +277,13 @@
   "auth": {
     "providers": [
       "password"
-    ]
+    ],
+    "claims": {
+        "role": {
+            "type": "string",
+            "enum": ["admin", "viewer"]
+        }
+    }
   },
   "firestore": {
     "/users/{userId}": {
