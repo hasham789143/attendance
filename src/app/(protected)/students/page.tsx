@@ -4,7 +4,7 @@ import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking,
 import { collection, query, where, doc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { Loader2, MoreHorizontal, Pen, Trash2, UserCog, UserX, CheckCircle, Ban } from 'lucide-react';
-import { UserProfile } from '@/components/providers/auth-provider';
+import { UserProfile, useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -92,13 +92,14 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
 
 export default function ResidentsPage() {
   const { firestore } = useFirebase();
+  const { userProfile } = useAuth();
   const { toast } = useToast();
 
   const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
   const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   
-  const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'attendance') : null, [firestore]);
+  const settingsDocRef = useMemoFirebase(() => firestore && userProfile ? doc(firestore, 'settings', 'attendance') : null, [firestore, userProfile]);
   const { data: settings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
