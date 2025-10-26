@@ -31,8 +31,8 @@ export default function RegisterPage() {
   const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'attendance') : null, [firestore]);
   const { data: settings, isLoading: settingsLoading } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
-  // Default to false and only update when settings are successfully loaded.
-  const isRegistrationOpen = settings?.isRegistrationOpen ?? false;
+  // Default to true. Registration is open unless explicitly closed by an admin.
+  const isRegistrationOpen = settings?.isRegistrationOpen ?? true;
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
