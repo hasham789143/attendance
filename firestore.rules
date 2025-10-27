@@ -1,46 +1,50 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- Helper Functions ---
+    
+    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
-
+    
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
-
-    // Check for a custom claim. This is the secure way to handle roles.
+    
     function isAdmin() {
       return isSignedIn() && request.auth.token.role == 'admin';
     }
 
-    // --- Rules ---
-
-    // Users can only read/update their own profile, but can create it.
-    // Admins can read any profile and list all users.
+    // USER PROFILES
+    // - A user can create their own profile.
+    // - A user can read, update, and delete their own profile.
+    // - An admin can read any user profile.
     match /users/{userId} {
-      allow get, update: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId);
+      allow read, update, delete: if isOwner(userId);
       allow list: if isAdmin();
-      allow delete: if false; // Deleting users should be handled via backend functions for safety
     }
-
-    // Settings are public to read, but only admins can write.
+    
+    // SETTINGS
+    // - Anyone (including unauthenticated users) can read the settings.
+    // - Only admins can update the settings.
     match /settings/attendance {
       allow get: if true;
-      allow update: if isAdmin();
-      allow create, delete, list: if false;
+      allow list, create, update, delete: if isAdmin();
     }
-
-    // Chat messages can be read/written by the owner or an admin.
-    match /chats/{studentUid}/{document=**} {
-        allow read, write: if isOwner(studentUid) || isAdmin();
+    
+    // CHATS
+    // - A user can read and write messages in their own chat.
+    // - An admin can read and write messages in any chat.
+    match /chats/{studentUid}/messages/{messageId} {
+      allow read, write: if isOwner(studentUid) || isAdmin();
     }
-
-    // Session documents can be read by any authenticated user, but only written by admins.
+    
+    // SESSIONS
+    // - Any authenticated user can read session information.
+    // - Only admins can write to session documents.
     match /sessions/{document=**} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
