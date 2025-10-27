@@ -40,12 +40,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             students.forEach(student => {
                 const q = query(
                     collection(firestore, 'chats', student.uid, 'messages'),
-                    where('isRead', '==', false),
-                    where('senderUid', '==', student.uid) // Only count messages from the student
+                    where('isRead', '==', false)
                 );
 
                 const unsubscribe = onSnapshot(q, snapshot => {
-                    setUnreadCounts(prev => ({ ...prev, [student.uid]: snapshot.size }));
+                    const studentMessages = snapshot.docs.filter(doc => doc.data().senderUid === student.uid);
+                    setUnreadCounts(prev => ({ ...prev, [student.uid]: studentMessages.length }));
                 }, error => {
                     console.error(`Error fetching unread count for ${student.name}:`, error);
                 });
@@ -56,22 +56,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         else if (userProfile.role === 'viewer') {
             const q = query(
                 collection(firestore, 'chats', userProfile.uid, 'messages'),
-                where('isRead', '==', false),
-                where('senderUid', '!=', userProfile.uid) // Count messages not sent by me
+                where('isRead', '==', false)
             );
 
             const unsubscribe = onSnapshot(q, snapshot => {
-                setUnreadCounts({ [userProfile.uid]: snapshot.size });
+                const adminMessages = snapshot.docs.filter(doc => doc.data().senderUid !== userProfile.uid);
+                setUnreadCounts({ [userProfile.uid]: adminMessages.length });
 
                 // Show toast for new messages if chat is not active
                 if (snapshot.docChanges().some(change => change.type === 'added') && activeChatStudentUid !== userProfile.uid) {
                     snapshot.docChanges().forEach(change => {
                          if (change.type === 'added') {
                              const message = change.doc.data();
-                             toast({
-                                title: `New message from ${message.senderName}`,
-                                description: message.text,
-                             });
+                             if(message.senderUid !== userProfile.uid) {
+                                 toast({
+                                    title: `New message from ${message.senderName}`,
+                                    description: message.text,
+                                 });
+                             }
                          }
                     })
                 }
@@ -91,28 +93,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (firestore && activeChatStudentUid && userProfile) {
             const markAsRead = async () => {
                 let q: Query;
-                if (userProfile.role === 'admin') {
-                    // Admin marks messages from the student as read
-                     q = query(
-                        collection(firestore, 'chats', activeChatStudentUid, 'messages'),
-                        where('isRead', '==', false),
-                        where('senderUid', '==', activeChatStudentUid)
-                    );
-                } else {
-                    // Student marks messages from admins as read
-                     q = query(
-                        collection(firestore, 'chats', activeChatStudentUid, 'messages'),
-                        where('isRead', '==', false),
-                        where('senderUid', '!=', userProfile.uid)
-                    );
-                }
-               
-                const snapshot = await getDocs(q);
+                
+                const baseQuery = query(
+                    collection(firestore, 'chats', activeChatStudentUid, 'messages'),
+                    where('isRead', '==', false)
+                );
+                
+                const snapshot = await getDocs(baseQuery);
                 if (snapshot.empty) return;
 
                 const batch = writeBatch(firestore);
                 snapshot.docs.forEach(doc => {
-                    batch.update(doc.ref, { isRead: true });
+                    const data = doc.data();
+                    // Admin marks messages from the student as read
+                    if (userProfile.role === 'admin' && data.senderUid === activeChatStudentUid) {
+                         batch.update(doc.ref, { isRead: true });
+                    } 
+                    // Student marks messages from admins as read
+                    else if (userProfile.role !== 'admin' && data.senderUid !== userProfile.uid) {
+                         batch.update(doc.ref, { isRead: true });
+                    }
                 });
                 await batch.commit();
             };
