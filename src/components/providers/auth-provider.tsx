@@ -7,6 +7,7 @@ import { Auth, User, onAuthStateChanged, signOut as firebaseSignOut } from 'fire
 import { doc, Firestore } from 'firebase/firestore';
 import { useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 // The shape of the user profile stored in Firestore
 export interface UserProfile {
