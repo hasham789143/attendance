@@ -2,53 +2,15 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
+
+    // Only logged-in users can access anything
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      // Check for a custom claim 'role' on the auth token.
-      return isSignedIn() && request.auth.token.role == 'admin';
-    }
-
-    // USER PROFILES
-    match /users/{userId} {
-      // An admin can read any profile. A user can read their own.
-      allow get: if isAdmin() || isOwner(userId);
-      // An admin can list all users for the user management page.
-      allow list: if isAdmin();
-      // A user can create their own profile. An admin can update any profile.
-      allow write: if isOwner(userId) || isAdmin();
-    }
-
-    // SETTINGS
-    match /settings/attendance {
-      // Anyone can read settings (for the public registration page).
-      allow get: if true;
-      // Only admins can change settings.
-      allow update: if isAdmin();
-      // Disallow create, delete, list for safety.
-      allow create, delete, list: if false;
-    }
-
-    // SESSIONS (Live and Archived)
-    match /sessions/{document=**} {
-      // Any authenticated user can read session data.
-      allow read: if isSignedIn();
-      // Only admins can create, update, or delete sessions and their records.
-      allow write: if isAdmin();
-    }
-
-    // CHATS
-    match /chats/{studentUid}/messages/{messageId} {
-       // A user can read/write messages in their own chat, or an admin can.
-       allow read, write: if isOwner(studentUid) || isAdmin();
+    // Optionally: restrict each chat to members only
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, write: if request.auth != null;
     }
   }
 }
