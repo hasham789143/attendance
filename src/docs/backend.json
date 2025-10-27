@@ -249,6 +249,9 @@
         "timestamp": {
           "type": "string",
           "format": "date-time"
+        },
+        "isRead": {
+            "type": "boolean"
         }
       },
       "required": [
@@ -256,7 +259,8 @@
         "senderUid",
         "senderName",
         "senderRole",
-        "timestamp"
+        "timestamp",
+        "isRead"
       ]
     },
     "Settings": {
@@ -277,7 +281,13 @@
   "auth": {
     "providers": [
       "password"
-    ]
+    ],
+    "claims": {
+      "role": {
+        "type": "string",
+        "enum": ["admin", "viewer"]
+      }
+    }
   },
   "firestore": {
     "/users/{userId}": {
@@ -336,3 +346,4 @@
     }
   }
 }
+

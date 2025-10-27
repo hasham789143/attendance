@@ -42,12 +42,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             students.forEach(student => {
                 const q = query(
                     collection(firestore, 'chats', student.uid, 'messages'),
-                    where('isRead', '==', false),
-                    where('senderUid', '==', student.uid)
+                    where('isRead', '==', false)
+                    // Removing the second where clause to avoid needing a composite index
+                    // where('senderUid', '==', student.uid) 
                 );
 
                 const unsubscribe = onSnapshot(q, snapshot => {
-                    setUnreadCounts(prev => ({ ...prev, [student.uid]: snapshot.size }));
+                    // Filter on the client-side
+                    const unreadCount = snapshot.docs.filter(doc => doc.data().senderUid === student.uid).length;
+                    setUnreadCounts(prev => ({ ...prev, [student.uid]: unreadCount }));
                 },
                 (error) => {
                     const contextualError = new FirestorePermissionError({
