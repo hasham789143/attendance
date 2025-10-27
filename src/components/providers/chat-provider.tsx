@@ -7,6 +7,8 @@ import { useStore } from './store-provider';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, onSnapshot, writeBatch, getDocs, Query } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 type UnreadCounts = {
     [studentUid: string]: number;
@@ -40,14 +42,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             students.forEach(student => {
                 const q = query(
                     collection(firestore, 'chats', student.uid, 'messages'),
-                    where('isRead', '==', false)
+                    where('isRead', '==', false),
+                    where('senderUid', '==', student.uid)
                 );
 
                 const unsubscribe = onSnapshot(q, snapshot => {
-                    const studentMessages = snapshot.docs.filter(doc => doc.data().senderUid === student.uid);
-                    setUnreadCounts(prev => ({ ...prev, [student.uid]: studentMessages.length }));
-                }, error => {
-                    console.error(`Error fetching unread count for ${student.name}:`, error);
+                    setUnreadCounts(prev => ({ ...prev, [student.uid]: snapshot.size }));
+                },
+                (error) => {
+                    const contextualError = new FirestorePermissionError({
+                        path: `chats/${student.uid}/messages`,
+                        operation: 'list',
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
                 });
                 unsubscribes.push(unsubscribe);
             });
@@ -56,12 +63,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         else if (userProfile.role === 'viewer') {
             const q = query(
                 collection(firestore, 'chats', userProfile.uid, 'messages'),
-                where('isRead', '==', false)
+                where('isRead', '==', false),
+                where('senderUid', '!=', userProfile.uid)
             );
 
             const unsubscribe = onSnapshot(q, snapshot => {
-                const adminMessages = snapshot.docs.filter(doc => doc.data().senderUid !== userProfile.uid);
-                setUnreadCounts({ [userProfile.uid]: adminMessages.length });
+                setUnreadCounts({ [userProfile.uid]: snapshot.size });
 
                 // Show toast for new messages if chat is not active
                 if (snapshot.docChanges().some(change => change.type === 'added') && activeChatStudentUid !== userProfile.uid) {
@@ -77,8 +84,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                          }
                     })
                 }
-            }, error => {
-                 console.error(`Error fetching unread count for myself:`, error);
+            },
+            (error) => {
+                const contextualError = new FirestorePermissionError({
+                    path: `chats/${userProfile.uid}/messages`,
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', contextualError);
             });
             unsubscribes.push(unsubscribe);
         }
@@ -117,7 +129,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 await batch.commit();
             };
 
-            markAsRead().catch(console.error);
+            markAsRead().catch((error) => {
+                const contextualError = new FirestorePermissionError({
+                    path: `chats/${activeChatStudentUid}/messages`,
+                    operation: 'update',
+                });
+                errorEmitter.emit('permission-error', contextualError);
+            });
         }
     }, [firestore, activeChatStudentUid, userProfile]);
 

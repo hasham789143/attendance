@@ -259,7 +259,8 @@
         "senderUid",
         "senderName",
         "senderRole",
-        "timestamp"
+        "timestamp",
+        "isRead"
       ]
     },
     "Settings": {
