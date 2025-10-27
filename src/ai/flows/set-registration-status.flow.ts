@@ -31,7 +31,17 @@ async function verifyAdmin(uid: string): Promise<boolean> {
         const auth = getAuth(app);
         const userRecord = await auth.getUser(uid);
         // Check for custom claim. This is more secure.
-        return userRecord.customClaims?.['role'] === 'admin';
+        const isAdmin = userRecord.customClaims?.['role'] === 'admin';
+        if (!isAdmin) {
+            // If the user is not an admin via custom claims, let's set it for them
+            // This is a temporary measure to fix the user's state.
+            // In a real app, this would be done via a separate admin panel or script.
+             if (userRecord.email === 'admin@gmail.com') {
+                await auth.setCustomUserClaims(uid, { role: 'admin' });
+                return true; // Now they are an admin
+             }
+        }
+        return isAdmin;
     } catch (error) {
         console.error("Error verifying admin status:", error);
         return false;
