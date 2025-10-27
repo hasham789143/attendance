@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -8,46 +7,60 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
     
     function isAdmin() {
+      // Custom claims are the most secure way to handle roles.
       return isSignedIn() && request.auth.token.role == 'admin';
     }
 
-    // USER PROFILES
-    // - A user can create their own profile.
-    // - A user can read, update, and delete their own profile.
-    // - An admin can read any user profile.
+    // Rules for user profiles
     match /users/{userId} {
+      // A user can create their own profile.
       allow create: if isOwner(userId);
-      allow read, update, delete: if isOwner(userId);
+      // A user can read their own profile, an admin can read any profile.
+      allow get: if isOwner(userId) || isAdmin();
+      // A user can update their own profile, an admin can update any profile.
+      allow update: if isOwner(userId) || isAdmin();
+      // Only an admin can list all users.
       allow list: if isAdmin();
+      // Only an admin can delete a user document.
+      allow delete: if isAdmin();
     }
     
-    // SETTINGS
-    // - Anyone (including unauthenticated users) can read the settings.
-    // - Only admins can update the settings.
-    match /settings/attendance {
-      allow get: if true;
-      allow list, create, update, delete: if isAdmin();
-    }
-    
-    // CHATS
-    // - A user can read and write messages in their own chat.
-    // - An admin can read and write messages in any chat.
+    // Rules for chat messages
     match /chats/{studentUid}/messages/{messageId} {
+      // A user can list/read/write/update messages in their own chat.
+      // An admin can list/read/write/update messages in any chat.
       allow read, write: if isOwner(studentUid) || isAdmin();
     }
-    
-    // SESSIONS
-    // - Any authenticated user can read session information.
-    // - Only admins can write to session documents.
+
+    // Rules for all session documents
     match /sessions/{document=**} {
+      // Any authenticated user can read any session document. This is needed
+      // for students to check session status and for admins to view history.
       allow read: if isSignedIn();
+      // Only admins can create, update, or delete session documents.
       allow write: if isAdmin();
+    }
+    
+    // Rules for app-wide settings
+    match /settings/attendance {
+      // Anyone can read the settings (e.g., to see if registration is open).
+      allow get: if true;
+      // Only admins can change the settings.
+      allow update: if isAdmin();
+      // Disallow all other operations for security.
+      allow create, delete, list: if false;
+    }
+
+    // Explicitly deny access to any other collection by default.
+    // This is good practice, although Firestore denies by default anyway.
+    match /{path=**}/documents/{document} {
+        allow read, write: if false;
     }
   }
 }
