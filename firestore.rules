@@ -11,56 +11,44 @@ service cloud.firestore {
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
+
     function isAdmin() {
-      // Custom claims are the most secure way to handle roles.
+      // Check for a custom claim 'role' on the auth token.
       return isSignedIn() && request.auth.token.role == 'admin';
     }
 
-    // Rules for user profiles
+    // USER PROFILES
     match /users/{userId} {
-      // A user can create their own profile.
-      allow create: if isOwner(userId);
-      // A user can read their own profile, an admin can read any profile.
-      allow get: if isOwner(userId) || isAdmin();
-      // A user can update their own profile, an admin can update any profile.
-      allow update: if isOwner(userId) || isAdmin();
-      // Only an admin can list all users.
+      // An admin can read any profile. A user can read their own.
+      allow get: if isAdmin() || isOwner(userId);
+      // An admin can list all users for the user management page.
       allow list: if isAdmin();
-      // Only an admin can delete a user document.
-      allow delete: if isAdmin();
-    }
-    
-    // Rules for chat messages
-    match /chats/{studentUid}/messages/{messageId} {
-      // A user can list/read/write/update messages in their own chat.
-      // An admin can list/read/write/update messages in any chat.
-      allow read, write: if isOwner(studentUid) || isAdmin();
+      // A user can create their own profile. An admin can update any profile.
+      allow write: if isOwner(userId) || isAdmin();
     }
 
-    // Rules for all session documents
-    match /sessions/{document=**} {
-      // Any authenticated user can read any session document. This is needed
-      // for students to check session status and for admins to view history.
-      allow read: if isSignedIn();
-      // Only admins can create, update, or delete session documents.
-      allow write: if isAdmin();
-    }
-    
-    // Rules for app-wide settings
+    // SETTINGS
     match /settings/attendance {
-      // Anyone can read the settings (e.g., to see if registration is open).
+      // Anyone can read settings (for the public registration page).
       allow get: if true;
-      // Only admins can change the settings.
+      // Only admins can change settings.
       allow update: if isAdmin();
-      // Disallow all other operations for security.
+      // Disallow create, delete, list for safety.
       allow create, delete, list: if false;
     }
 
-    // Explicitly deny access to any other collection by default.
-    // This is good practice, although Firestore denies by default anyway.
-    match /{path=**}/documents/{document} {
-        allow read, write: if false;
+    // SESSIONS (Live and Archived)
+    match /sessions/{document=**} {
+      // Any authenticated user can read session data.
+      allow read: if isSignedIn();
+      // Only admins can create, update, or delete sessions and their records.
+      allow write: if isAdmin();
+    }
+
+    // CHATS
+    match /chats/{studentUid}/messages/{messageId} {
+       // A user can read/write messages in their own chat, or an admin can.
+       allow read, write: if isOwner(studentUid) || isAdmin();
     }
   }
 }
