@@ -3,14 +3,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Only logged-in users can access anything
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // Optionally: restrict each chat to members only
-    match /chats/{chatId}/messages/{messageId} {
-      allow read, write: if request.auth != null;
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      // Securely check for admin role from custom claims on the auth token.
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    // Rules for the 'users' collection
+    match /users/{userId} {
+      // An admin can list all users for the management page.
+      allow list: if isAdmin();
+      
+      // A user can create their own profile.
+      allow create: if isOwner(userId);
+
+      // A user can read or update their own profile. An admin can read any profile.
+      allow get, update: if isOwner(userId) || isAdmin();
+
+      // Only an admin should be able to delete a user document.
+      allow delete: if isAdmin();
+    }
+
+    // Rules for 'settings'
+    match /settings/attendance {
+        // Anyone can read the settings (for the registration page)
+        allow get: if true;
+        // Only admins can change the settings
+        allow write: if isAdmin();
+    }
+    
+    // Rules for chat functionality
+    match /chats/{studentUid}/messages/{messageId} {
+        // A user can read/write to their own chat. An admin can read/write to any chat.
+        allow read, write: if isOwner(studentUid) || isAdmin();
+    }
+
+    // Rules for all session documents (current and archived)
+    match /sessions/{document=**} {
+      // Any authenticated user can read session data (needed for student/admin dashboards).
+      allow read: if isSignedIn();
+      // Only admins can create, update, or delete session data.
+      allow write: if isAdmin();
     }
   }
 }
