@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
@@ -36,16 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return doc(firestore, 'users', authUser.uid);
   }, [firestore, authUser]);
 
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
-
+  const { data: userProfileData, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
+  
+  // The primary loading state is when auth is loading or when we have a user but are still fetching their profile.
   const loading = isAuthLoading || (!!authUser && isProfileLoading);
 
   useEffect(() => {
-    if (!loading && authUser && userProfile?.role === 'disabled') {
+    if (!loading && authUser && userProfileData?.role === 'disabled') {
       firebaseSignOut(auth);
       router.replace('/login');
     }
-  }, [loading, authUser, userProfile, auth, router]);
+  }, [loading, authUser, userProfileData, auth, router]);
   
   const logout = useCallback(async () => {
     if (auth) {
@@ -54,6 +56,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [auth, router]);
   
+  // This state now specifically handles the case where the user is logged in
+  // but their profile document might not exist.
+  const [profileExists, setProfileExists] = useState(true);
+
+  useEffect(() => {
+    if (authUser && !isProfileLoading && !userProfileData) {
+      // If we've finished loading and there's still no profile data for a logged-in user,
+      // it means the document is missing.
+      setProfileExists(false);
+    } else {
+      setProfileExists(true);
+    }
+  }, [authUser, isProfileLoading, userProfileData]);
+
+
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -62,11 +79,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  // userProfile can be null if doc doesn't exist.
-  const profile = userProfile ? { ...userProfile, id: userProfile.uid } as UserProfile : null;
+  // If the user is authenticated but their profile doesn't exist, show an error.
+  // This is a more specific and accurate check.
+  if (authUser && !profileExists) {
+     return (
+       <div className="flex h-screen w-full flex-col items-center justify-center gap-4 text-center">
+         <p className="text-xl font-semibold">Could not load user profile.</p>
+         <p className="text-muted-foreground">The user document might be missing in Firestore.</p>
+         <Button onClick={logout}>Return to Login</Button>
+       </div>
+     );
+  }
+
+
+  const userProfile = userProfileData ? { ...userProfileData, id: userProfileData.uid } as UserProfile : null;
 
   return (
-    <AuthContext.Provider value={{ user: authUser, userProfile: profile, loading, logout }}>
+    <AuthContext.Provider value={{ user: authUser, userProfile, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );
