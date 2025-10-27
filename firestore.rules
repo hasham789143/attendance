@@ -13,45 +13,42 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Securely check for admin role from custom claims on the auth token.
+      // Check for the admin custom claim on the user's auth token.
       return isSignedIn() && request.auth.token.role == 'admin';
     }
 
-    // Rules for the 'users' collection
+    // == USERS ==
+    // A user can read/update their own profile.
+    // An admin can read/list all profiles and delete them.
+    // A new user can create their own profile.
     match /users/{userId} {
-      // An admin can list all users for the management page.
-      allow list: if isAdmin();
-      
-      // A user can create their own profile.
-      allow create: if isOwner(userId);
-
-      // A user can read or update their own profile. An admin can read any profile.
       allow get, update: if isOwner(userId) || isAdmin();
-
-      // Only an admin should be able to delete a user document.
-      allow delete: if isAdmin();
+      allow create: if isOwner(userId); // Allows a user to create their own document
+      allow list, delete: if isAdmin();
     }
 
-    // Rules for 'settings'
+    // == SETTINGS ==
+    // Anyone can read the registration settings (for the public sign-up page).
+    // Only admins can change the settings.
     match /settings/attendance {
-        // Anyone can read the settings (for the registration page)
-        allow get: if true;
-        // Only admins can change the settings
-        allow write: if isAdmin();
-    }
-    
-    // Rules for chat functionality
-    match /chats/{studentUid}/messages/{messageId} {
-        // A user can read/write to their own chat. An admin can read/write to any chat.
-        allow read, write: if isOwner(studentUid) || isAdmin();
-    }
-
-    // Rules for all session documents (current and archived)
-    match /sessions/{document=**} {
-      // Any authenticated user can read session data (needed for student/admin dashboards).
-      allow read: if isSignedIn();
-      // Only admins can create, update, or delete session data.
+      allow get: if true;
       allow write: if isAdmin();
     }
+
+    // == CHATS ==
+    // A user can read and write to their own chat.
+    // An admin can read and write to any chat.
+    match /chats/{studentUid}/{document=**} {
+      allow read, write: if isOwner(studentUid) || isAdmin();
+    }
+    
+    // == SESSIONS ==
+    // Any authenticated user can read session data (for dashboards).
+    // Only admins can create, update, or delete session data.
+    match /sessions/{document=**} {
+        allow get, list: if isSignedIn();
+        allow write: if isAdmin();
+    }
+
   }
 }
