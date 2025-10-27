@@ -1,10 +1,9 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // --- Helper Functions ---
     function isSignedIn() {
       return request.auth != null;
     }
@@ -13,49 +12,38 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
+    // Check for a custom claim. This is the secure way to handle roles.
     function isAdmin() {
-      // Check for a custom claim on the user's auth token.
-      // This is the most secure way to identify an admin.
       return isSignedIn() && request.auth.token.role == 'admin';
     }
 
-    // Rules for user profile documents
+    // --- Rules ---
+
+    // Users can only read/update their own profile, but can create it.
+    // Admins can read any profile and list all users.
     match /users/{userId} {
-      // Allow a user to read their own profile. Admins can read any profile.
-      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
-      
-      // Allow a user to create their own profile document.
-      allow create: if isSignedIn() && isOwner(userId);
-
-      // Allow a user to update their own profile. Admins can update any profile.
-      allow update: if isSignedIn() && (isOwner(userId) || isAdmin());
-      
-      // Only admins can delete user profiles.
-      allow delete: if isAdmin();
+      allow get, update: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow list: if isAdmin();
+      allow delete: if false; // Deleting users should be handled via backend functions for safety
     }
 
-    // Rules for the settings document
+    // Settings are public to read, but only admins can write.
     match /settings/attendance {
-      // Allow anyone to read the settings (needed for public registration page).
       allow get: if true;
-
-      // Only admins can write to the settings document.
-      allow write: if isAdmin();
+      allow update: if isAdmin();
+      allow create, delete, list: if false;
     }
 
-    // Rules for all session-related documents
+    // Chat messages can be read/written by the owner or an admin.
+    match /chats/{studentUid}/{document=**} {
+        allow read, write: if isOwner(studentUid) || isAdmin();
+    }
+
+    // Session documents can be read by any authenticated user, but only written by admins.
     match /sessions/{document=**} {
-        // Any authenticated user can read session information.
-        allow read: if isSignedIn();
-
-        // Only administrators can create, update, or delete session documents.
-        allow write: if isAdmin();
-    }
-
-    // Rules for chat messages
-    match /chats/{studentUid}/messages/{messageId} {
-        // A user can read/write their own messages. Admins can read/write any message.
-        allow read, write: if isSignedIn() && (isOwner(studentUid) || isAdmin());
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

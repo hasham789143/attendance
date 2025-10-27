@@ -3,6 +3,7 @@
 import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban } from 'lucide-react';
 import { UserProfile, useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -95,6 +96,7 @@ export default function ResidentsPage() {
   const { firestore } = useFirebase();
   const { userProfile } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
   const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
@@ -114,12 +116,18 @@ export default function ResidentsPage() {
 
 
   const allUsersQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || userProfile?.role !== 'admin') return null;
     return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled']));
-  }, [firestore]);
+  }, [firestore, userProfile]);
 
   const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
   const sortedUsers = allUsers?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
+
+    useEffect(() => {
+        if (userProfile && userProfile.role !== 'admin') {
+            router.replace('/dashboard');
+        }
+    }, [userProfile, router]);
 
   const handleUpdateUser = async (userId: string, data: Partial<UserProfile>) => {
     if (!firestore) return;
@@ -173,6 +181,14 @@ export default function ResidentsPage() {
         case 'both': return <Badge variant="secondary" className="bg-purple-200 text-purple-800">Both</Badge>;
         default: return <Badge variant="outline">N/A</Badge>;
     }
+  }
+
+  if (userProfile?.role !== 'admin') {
+     return (
+       <div className="flex h-screen w-full items-center justify-center">
+         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+       </div>
+     );
   }
 
 
@@ -307,5 +323,3 @@ export default function ResidentsPage() {
     </div>
   );
 }
-
-    
