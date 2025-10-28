@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
@@ -49,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [hasCheckedAdmin, setHasCheckedAdmin] = useState(false);
 
-  // Effect to grant admin role if necessary
+  // Effect to grant admin role if necessary to the primary admin
   useEffect(() => {
     const checkAndGrantAdmin = async () => {
       if (authUser && authUser.email === 'admin@gmail.com' && !hasCheckedAdmin) {

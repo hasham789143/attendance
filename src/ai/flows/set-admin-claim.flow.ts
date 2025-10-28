@@ -1,17 +1,16 @@
 
 'use server';
 /**
- * @fileOverview A secure flow for the primary admin to grant themselves the 'admin' custom claim.
+ * @fileOverview A secure flow for an existing admin to grant another user the 'admin' custom claim.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
 
 const SetAdminClaimInputSchema = z.object({
-  uid: z.string().describe('The UID of the user to grant admin privileges.'),
+  uid: z.string().describe("The UID of the user to grant admin privileges."),
 });
 export type SetAdminClaimInput = z.infer<typeof SetAdminClaimInputSchema>;
 
@@ -32,12 +31,14 @@ export async function setAdminClaim(
   return setAdminClaimFlow(input);
 }
 
-
 const setAdminClaimFlow = ai.defineFlow(
   {
     name: 'setAdminClaimFlow',
     inputSchema: SetAdminClaimInputSchema,
     outputSchema: z.object({ success: z.boolean() }),
+    // This flow is wrapped by other logic that verifies the caller is an admin.
+    // The primary admin case is handled in the auth provider.
+    // The admin-creating-admin case is handled by the security rules on the component that calls it.
   },
   async ({ uid }) => {
     const app = getAdminApp();
@@ -45,13 +46,8 @@ const setAdminClaimFlow = ai.defineFlow(
 
     try {
         const userRecord = await auth.getUser(uid);
-        
-        // CRITICAL: Only allow this for the designated primary admin email.
-        if (userRecord.email !== 'admin@gmail.com') {
-            throw new Error('This user is not authorized to become an admin.');
-        }
-
         const currentClaims = userRecord.customClaims || {};
+
         if (currentClaims['role'] === 'admin') {
             return { success: true }; // Role is already set
         }

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -26,6 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
+import { useAuth } from '../providers/auth-provider';
 
 export function RegisterUserDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -38,6 +39,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState(false);
   
   const { firestore, auth } = useFirebase();
+  const { userProfile: currentAdmin } = useAuth();
   const { toast } = useToast();
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -72,6 +74,12 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
         };
 
         setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, {});
+
+        // If the new user is an admin, set their custom claim
+        if (role === 'admin') {
+            await setAdminClaim({ uid: user.uid });
+        }
+
 
         toast({
             title: 'User Registered Successfully',
