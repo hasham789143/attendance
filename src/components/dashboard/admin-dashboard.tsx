@@ -32,6 +32,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
+      if (!record || !record.scans) return 'absent';
       if (record.correctionRequest?.status === 'pending') return 'absent';
       
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
@@ -222,6 +223,7 @@ export function AdminDashboard() {
   const { t } = useTranslation();
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
+      if (!record || !record.scans) return 'absent';
       const scansCompleted = record.scans.filter(s => s.status !== 'absent').length;
       if (scansCompleted === 0) return 'absent';
       
