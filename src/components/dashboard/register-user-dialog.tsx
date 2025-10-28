@@ -14,9 +14,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirebase, setDocumentNonBlocking } from '@/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Loader2 } from 'lucide-react';
 import {
@@ -27,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useAuth } from '../providers/auth-provider';
+import { createUser } from '@/ai/flows/create-user.flow';
 
 export function RegisterUserDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -36,8 +34,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
   const [loading, setLoading] = useState(false);
-  
-  const { firestore, auth } = useFirebase();
+  const { userProfile } = useAuth();
   const { toast } = useToast();
 
   const resetForm = () => {
@@ -59,56 +56,38 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
       });
       return;
     }
-
-    if (!auth || !firestore) {
-      toast({
-        variant: 'destructive',
-        title: 'Firebase Error',
-        description: 'Firebase services are not initialized properly.',
-      });
-      return;
-    }
+    
+    if (!userProfile) return;
 
     setLoading(true);
 
     try {
-      // NOTE: This flow has limitations in a client-only environment.
-      // createUserWithEmailAndPassword signs out the current admin.
-      // A more robust solution uses a serverless function (Firebase Function)
-      // to create users via the Admin SDK without affecting the admin's session.
-      
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const newUser = userCredential.user;
-
-      const userProfileData = {
-        uid: newUser.uid,
-        name,
-        roll,
+      const result = await createUser({
         email,
-        role: 'viewer', // New user is a viewer by default
+        password,
+        displayName: name,
+        roll,
         userType,
-      };
-
-      await setDocumentNonBlocking(doc(firestore, 'users', newUser.uid), userProfileData, { merge: false });
-
-      toast({
-        title: 'User Registered Successfully',
-        description: `${name} can now log in with the password you set.`,
+        adminUid: userProfile.uid,
       });
 
-      // The admin will be signed out here. This is a known limitation.
-      // They will need to log back in.
-      resetForm();
-      setOpen(false);
+      if (result.uid) {
+         toast({
+          title: 'User Registered Successfully',
+          description: `${name} has been created and can now log in.`,
+        });
+        resetForm();
+        setOpen(false);
+      } else {
+        throw new Error(result.error || "An unknown error occurred.");
+      }
+
     } catch (error: any) {
       console.error('Registration Error:', error);
       toast({
         variant: 'destructive',
         title: 'Registration Failed',
-        description:
-          error.code === 'auth/email-already-in-use'
-            ? 'This email is already registered.'
-            : error.message || 'An unexpected error occurred.',
+        description: error.message || 'An unexpected error occurred.',
       });
     } finally {
       setLoading(false);

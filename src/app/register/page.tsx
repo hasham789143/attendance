@@ -55,6 +55,7 @@ export default function RegisterPage() {
         userType,
       };
 
+      // CRITICAL: Await the setDoc to ensure the profile is created before continuing.
       await setDoc(doc(firestore, 'users', user.uid), userProfileData);
       
       toast({
@@ -64,7 +65,10 @@ export default function RegisterPage() {
       
       // Sign out the new user so the admin/current user remains logged in
       // or to force the new user to log in themselves.
-      await auth.signOut();
+      if (auth.currentUser) {
+        await auth.signOut();
+      }
+      
       router.push('/login');
 
     } catch (error: any) {
