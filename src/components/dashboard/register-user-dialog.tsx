@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -15,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirebase, setDocumentNonBlocking } from '@/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, getIdToken } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Loader2 } from 'lucide-react';
@@ -45,6 +44,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!name || !email || !password || !role || !userType) {
       toast({
         variant: 'destructive',
@@ -53,61 +53,76 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
       });
       return;
     }
+
     if (!auth || !firestore) {
-        toast({ variant: 'destructive', title: 'Auth Error', description: 'Firebase services are not available.' });
-        return;
+      toast({
+        variant: 'destructive',
+        title: 'Firebase Error',
+        description: 'Firebase services are not initialized properly.',
+      });
+      return;
     }
+
     setLoading(true);
 
     try {
-        // We can't create a user with the same email in the same project.
-        // The admin should use this to create *new* users, not register existing ones in a different role.
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+      // Step 1: Create the user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const newUser = userCredential.user;
 
-        const userProfileData = {
-            uid: user.uid,
-            name,
-            roll,
-            email,
-            role,
-            userType,
-        };
+      const userProfileData = {
+        uid: newUser.uid,
+        name,
+        roll,
+        email,
+        role,
+        userType,
+      };
 
-        // If the new user is an admin, set their custom claim *first*.
-        // This is a server-side operation.
-        if (role === 'admin') {
-            const result = await setAdminClaim({ uid: user.uid });
-            if (!result.success) {
-                // If the claim fails, we should not proceed to save the user profile.
-                // You might want to delete the user from Auth here as well for cleanup.
-                throw new Error("Failed to set admin claim for the new user. Registration aborted.");
-            }
+      // Step 2: If the user is an admin, set the admin custom claim securely
+      if (role === 'admin') {
+        const result = await setAdminClaim({ uid: newUser.uid });
+        if (!result.success) {
+          throw new Error('Failed to assign admin privileges. Please try again.');
         }
-        
-        // Now, save the user profile data to Firestore. This is a client-side operation.
-        setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
+      }
 
-        toast({
-            title: 'User Registered Successfully',
-            description: `${name} has been added.`,
-        });
-        
-        // Reset form
-        setName('');
-        setRoll('');
-        setEmail('');
-        setPassword('');
-        setRole('viewer');
-        setUserType('student');
-        setOpen(false);
+      // Step 3: Save user profile in Firestore
+      await setDocumentNonBlocking(doc(firestore, 'users', newUser.uid), userProfileData, { merge: false });
 
+      // Step 4: Refresh token for the current admin (optional)
+      try {
+        await auth.currentUser?.getIdToken(true);
+      } catch (tokenError) {
+        console.warn('Token refresh failed (non-critical):', tokenError);
+      }
+
+      // Step 5: Success toast message
+      toast({
+        title: 'User Registered Successfully',
+        description:
+          role === 'admin'
+            ? `${name} has been created as an administrator. They must log out and back in to activate permissions.`
+            : `${name} has been created successfully.`,
+      });
+
+      // Step 6: Reset form and close dialog
+      setName('');
+      setRoll('');
+      setEmail('');
+      setPassword('');
+      setRole('viewer');
+      setUserType('student');
+      setOpen(false);
     } catch (error: any) {
       console.error('Registration Error:', error);
       toast({
         variant: 'destructive',
         title: 'Registration Failed',
-        description: error.code === 'auth/email-already-in-use' ? 'This email address is already in use.' : (error.message || 'An unexpected error occurred.'),
+        description:
+          error.code === 'auth/email-already-in-use'
+            ? 'This email is already registered.'
+            : error.message || 'An unexpected error occurred.',
       });
     } finally {
       setLoading(false);
@@ -122,14 +137,14 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
           <DialogHeader>
             <DialogTitle>Register New User</DialogTitle>
             <DialogDescription>
-              Create a new account for a student, resident, or administrator.
+              Create a new student, resident, or administrator account.
             </DialogDescription>
           </DialogHeader>
+
           <div className="grid gap-4 py-4">
+            {/* Full Name */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Full Name
-              </Label>
+              <Label htmlFor="name" className="text-right">Full Name</Label>
               <Input
                 id="name"
                 value={name}
@@ -138,10 +153,10 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
                 required
               />
             </div>
+
+            {/* Roll / Room */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="roll" className="text-right">
-                ID / Room No.
-              </Label>
+              <Label htmlFor="roll" className="text-right">ID / Room No.</Label>
               <Input
                 id="roll"
                 value={roll}
@@ -149,10 +164,10 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
                 className="col-span-3"
               />
             </div>
+
+            {/* Email */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="email" className="text-right">
-                Email
-              </Label>
+              <Label htmlFor="email" className="text-right">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -162,10 +177,10 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
                 required
               />
             </div>
+
+            {/* Password */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="password" className="text-right">
-                Password
-              </Label>
+              <Label htmlFor="password" className="text-right">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -176,36 +191,37 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
                 placeholder="Temporary password"
               />
             </div>
-             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="role" className="text-right">
-                System Role
-              </Label>
-                <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
-                    <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="viewer">User (Student/Resident)</SelectItem>
-                        <SelectItem value="admin">Administrator</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+
+            {/* System Role */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="userType" className="text-right">
-                User Type
-              </Label>
-                <Select onValueChange={(value) => setUserType(value as any)} value={userType}>
-                    <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder="Select a type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="student">Student</SelectItem>
-                        <SelectItem value="resident">Resident</SelectItem>
-                        <SelectItem value="both">Both</SelectItem>
-                    </SelectContent>
-                </Select>
+              <Label htmlFor="role" className="text-right">System Role</Label>
+              <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">User (Student/Resident)</SelectItem>
+                  <SelectItem value="admin">Administrator</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* User Type */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="userType" className="text-right">User Type</Label>
+              <Select onValueChange={(value) => setUserType(value as any)} value={userType}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="student">Student</SelectItem>
+                  <SelectItem value="resident">Resident</SelectItem>
+                  <SelectItem value="both">Both</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
           <DialogFooter>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -377,7 +377,11 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
           reject(error);
         }
       }, (error) => {
-          toast({ variant: 'destructive', title: 'Location Error', description: `Could not get location: ${error.message}` });
+          let description = 'Could not get your location. Please ensure location services are enabled for your browser and this site.';
+          if (error.code === error.PERMISSION_DENIED) {
+            description = 'Location permission was denied. You must allow location access to start a session.';
+          }
+          toast({ variant: 'destructive', title: 'Location Error', description });
           reject(error);
       });
     });
@@ -730,3 +734,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
