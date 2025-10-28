@@ -1,10 +1,161 @@
+/**
+ * @file Firestore Security Rules
+ * @description This ruleset enforces a role-based access control model with ownership constraints.
+ *
+ * Data Structure:
+ * - /users/{userId}: User profiles, accessible only to the user themselves.
+ * - /sessions/class-current: Current class attendance session (single document).
+ * - /sessions/class-current/records/{userId}: Live class attendance records, writeable by no one
+ * - /sessions/hostel-current: Current hostel attendance session (single document).
+ * - /sessions/hostel-current/records/{userId}: Live hostel attendance records, writeable by no one
+ * - /sessions/{sessionId}: Archived attendance sessions.
+ * - /sessions/{sessionId}/records/{recordId}: Historical attendance records.
+ * - /chats/{studentUid}/messages/{messageId}: Chat messages for a specific student.
+ * - /settings/attendance: Application-wide settings.
+ *
+ * Key Security Decisions:
+ * - Users can only read and write their own profile data.
+ * - Only authenticated users can access chat. Admins have full access to all chats.
+ * - Data validation is minimized for rapid prototyping but includes essential checks for
+ *   authorization and relational integrity.
+ *
+ * Denormalization for Authorization:
+ * - The 'role' field is denormalized into the user document to simplify role-based checks.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow any authenticated user to read and write to any document.
-    // All access control logic will be handled in the client-side application.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    /**
+     * @description Enforces user-ownership for profile data.
+     * @path /users/{userId}
+     * @allow (get, update, delete) User with matching {userId}.
+     * @allow (create) User if request.auth.uid == userId
+     * @deny (get, update, delete) User if {userId} does not match request.auth.uid.
+     * @principle Enforces document ownership for writes and reads.
+     */
+    match /users/{userId} {
+      // Allow reads (get, list) only if the user is signed in and is the owner of the profile.
+      allow get, list: if isSignedIn() && isOwner(userId);
+
+      // Allow the user to create their own profile, but enforce that the userId matches the auth UID.
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.uid == userId;
+
+      // Allow updates and deletes only if the user is the owner of the profile and the profile exists.
+      allow update, delete: if isSignedIn() && isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
+    }
+
+    /**
+     * @description Controls access to the current class attendance session.
+     * @path /sessions/class-current
+     * @allow (get, list) Any signed-in user.
+     * @deny (create, update, delete) All users.
+     * @principle Restricts write access to system.
+     */
+    match /sessions/class-current {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Restricts access to live class attendance records.
+     * @path /sessions/class-current/records/{userId}
+     * @deny (get, list, create, update, delete) All users.
+     * @principle Enforces that nobody writes or reads this data.
+     */
+    match /sessions/class-current/records/{userId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    /**
+     * @description Controls access to the current hostel attendance session.
+     * @path /sessions/hostel-current
+     * @allow (get, list) Any signed-in user.
+     * @deny (create, update, delete) All users.
+     * @principle Restricts write access to system.
+     */
+    match /sessions/hostel-current {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Restricts access to live hostel attendance records.
+     * @path /sessions/hostel-current/records/{userId}
+     * @deny (get, list, create, update, delete) All users.
+     * @principle Enforces that nobody writes or reads this data.
+     */
+    match /sessions/hostel-current/records/{userId} {
+      allow get, list, create, update, delete: if false;
+    }
+
+    /**
+     * @description Controls access to archived attendance sessions.
+     * @path /sessions/{sessionId}
+     * @allow (get, list) Any signed-in user.
+     * @deny (create, update, delete) All users.
+     * @principle Restricts write access to system.
+     */
+    match /sessions/{sessionId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Controls access to historical attendance records.
+     * @path /sessions/{sessionId}/records/{recordId}
+     * @allow (get, list) Any signed-in user.
+     * @deny (create, update, delete) All users.
+     * @principle Restricts write access to system.
+     */
+    match /sessions/{sessionId}/records/{recordId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    /**
+     * @description Manages chat message access between users.
+     * @path /chats/{studentUid}/messages/{messageId}
+     * @allow (read, write) User with matching studentUid or admin role
+     * @deny (read, write) Other users
+     * @principle Restricts access to authorized users.
+     */
+    match /chats/{studentUid}/messages/{messageId} {
+        allow read, write: if isSignedIn() && (isOwner(studentUid) || isAdmin());
+    }
+
+    /**
+     * @description Manages application-wide settings.
+     * @path /settings/attendance
+     * @allow (read) Any signed-in user.
+     * @deny (create, update, delete) All users.
+     * @principle Restricts write access to system.
+     */
+    match /settings/attendance {
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if false;
+    }
+
+    // --- Helper Functions ---
+
+    // Checks if the user is signed in.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Checks if the user is the owner of the resource (userId matches auth UID).
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Checks if the user is the owner and the resource exists.
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+     // Checks if the user has the 'admin' role.
+    function isAdmin() {
+      return request.auth.token.role == 'admin';
     }
   }
 }
