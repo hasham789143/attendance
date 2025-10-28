@@ -1,9 +1,10 @@
+
 export const firebaseConfig = {
-  apiKey: "AIzaSyD3M5ENIYlijG91N0Jgpti8cgc7IKEAieU",
-  authDomain: "fir-f5a7c.firebaseapp.com",
-  projectId: "fir-f5a7c",
-  storageBucket: "fir-f5a7c.appspot.com",
-  messagingSenderId: "1029563051571",
-  appId: "1:1029563051571:web:def80f81ee2c99cb553d46",
-  measurementId: "G-68D975N0DN"
+  apiKey: "AIzaSyC1fC1Q9a1dJ1m6y_y_d-g5w-X1kS4Y_Ls",
+  authDomain: "vital-charger-475713-g4.firebaseapp.com",
+  projectId: "vital-charger-475713-g4",
+  storageBucket: "vital-charger-475713-g4.appspot.com",
+  messagingSenderId: "477018375355",
+  appId: "1:477018375355:web:d5c0734a75c977b216b2c2",
+  measurementId: "G-R49CH3B7P2"
 };
