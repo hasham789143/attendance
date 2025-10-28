@@ -17,7 +17,7 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: 'admin' | 'viewer' | 'disabled';
+  role: 'admin' | 'viewer' | 'disabled' | 'pending';
   userType: 'student' | 'resident' | 'both';
   roll?: string;
 }
@@ -47,11 +47,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loading = isAuthLoading || (!!authUser && isProfileLoading);
 
   useEffect(() => {
-    if (!loading && authUser && userProfileData?.role === 'disabled') {
-      firebaseSignOut(auth);
-      router.replace('/login');
+    if (!loading && authUser && userProfileData) {
+      if (userProfileData.role === 'disabled') {
+        toast({ title: 'Account Disabled', description: 'Your account has been disabled by an administrator.', variant: 'destructive'});
+        firebaseSignOut(auth);
+        router.replace('/login');
+      } else if (userProfileData.role === 'pending') {
+        toast({ title: 'Account Pending', description: 'Your account is awaiting administrator approval.' });
+        firebaseSignOut(auth);
+        router.replace('/login');
+      }
     }
-  }, [loading, authUser, userProfileData, auth, router]);
+  }, [loading, authUser, userProfileData, auth, router, toast]);
   
   const logout = useCallback(async () => {
     if (auth) {

@@ -26,11 +26,12 @@
         },
         "role": {
           "type": "string",
-          "description": "Role of the user within the system (e.g., 'admin', 'viewer', 'disabled').",
+          "description": "Role of the user within the system (e.g., 'admin', 'viewer', 'disabled', 'pending').",
           "enum": [
             "admin",
             "viewer",
-            "disabled"
+            "disabled",
+            "pending"
           ]
         },
         "userType": {
@@ -346,4 +347,3 @@
     }
   }
 }
-

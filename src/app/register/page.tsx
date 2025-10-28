@@ -24,9 +24,9 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
-  const [role, setRole] = useState<'viewer' | 'admin'>('viewer');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const { auth, firestore } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
@@ -39,7 +39,7 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!isRegistrationOpen && role !== 'admin') {
+    if (!isRegistrationOpen) {
         toast({
             variant: 'destructive',
             title: 'Registration Closed',
@@ -47,7 +47,7 @@ export default function RegisterPage() {
         });
         return;
     }
-    if (!name || !email || !password || !userType || !role) {
+    if (!name || !email || !password || !userType) {
       toast({
         variant: 'destructive',
         title: 'Missing Fields',
@@ -60,23 +60,22 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // New users get 'pending' role. Admins are created via admin panel now.
       const userProfileData = {
         uid: user.uid,
         name,
         roll,
         email,
-        role: role,
+        role: 'pending', 
         userType,
       };
 
       setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
-
-      if (role === 'admin') {
-        await setAdminClaim({ uid: user.uid });
-      }
       
-      toast({ title: 'Registration Successful', description: 'Redirecting to your dashboard...'});
-      router.push('/dashboard');
+      // Sign the user out immediately after registration
+      await auth.signOut();
+      
+      setIsSubmitted(true);
 
     } catch (error: any) {
       console.error('Registration Error:', error);
@@ -92,6 +91,28 @@ export default function RegisterPage() {
     }
   };
 
+  if (isSubmitted) {
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-background p-4">
+            <Card className="w-full max-w-sm">
+                <CardHeader className="text-center">
+                    <Logo className="justify-center mb-2" />
+                    <CardTitle>Registration Submitted</CardTitle>
+                    <CardDescription>Your account is pending administrator approval.</CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                    <p className="text-muted-foreground mb-4">
+                        You will be able to log in once your account has been approved.
+                    </p>
+                    <Button asChild className="w-full">
+                        <Link href="/login">Return to Login</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
@@ -105,7 +126,7 @@ export default function RegisterPage() {
             <div className="flex justify-center items-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : !isRegistrationOpen && role !== 'admin' ? (
+          ) : !isRegistrationOpen ? (
              <Alert variant="destructive">
                 <AlertTitle>Registration Closed</AlertTitle>
                 <AlertDescription>
@@ -180,18 +201,7 @@ export default function RegisterPage() {
                     </SelectContent>
                 </Select>
               </div>
-               <div className="space-y-2">
-                <Label htmlFor="role">System Role</Label>
-                <Select onValueChange={(v) => setRole(v as any)} value={role}>
-                    <SelectTrigger id="role">
-                        <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="viewer">User (Student/Resident)</SelectItem>
-                        <SelectItem value="admin">Administrator</SelectItem>
-                    </SelectContent>
-                </Select>
-              </div>
+              
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Register

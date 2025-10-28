@@ -4,7 +4,7 @@ import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase'
 import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban } from 'lucide-react';
+import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { UserProfile, useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -42,6 +42,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { setRegistrationStatus } from '@/ai/flows/set-registration-status.flow';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
     const [name, setName] = useState(user.name);
@@ -91,6 +92,112 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
     )
 }
 
+function UserTable({ users, onEdit, onToggleStatus, onDelete }: { users: UserProfile[], onEdit: (user: UserProfile) => void, onToggleStatus: (user: UserProfile) => void, onDelete: (user: UserProfile) => void }) {
+    
+    const getUserTypeBadge = (userType: UserProfile['userType']) => {
+        switch(userType) {
+            case 'student': return <Badge variant="secondary">Student</Badge>;
+            case 'resident': return <Badge variant="secondary" className="bg-blue-200 text-blue-800">Resident</Badge>;
+            case 'both': return <Badge variant="secondary" className="bg-purple-200 text-purple-800">Both</Badge>;
+            default: return <Badge variant="outline">N/A</Badge>;
+        }
+    }
+
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>ID / Room Number</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {users.map(user => (
+                    <TableRow key={user.id}>
+                        <TableCell className="font-medium">{user.name}</TableCell>
+                        <TableCell>{user.roll || 'N/A'}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>{getUserTypeBadge(user.userType)}</TableCell>
+                        <TableCell>
+                            {user.role === 'disabled' ? (
+                                <Badge variant="destructive">Disabled</Badge>
+                            ) : user.role === 'pending' ? (
+                                <Badge variant="secondary" className="bg-yellow-500 text-black">Pending</Badge>
+                            ) : (
+                                <Badge variant="default" className="bg-green-600">Active</Badge>
+                            )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                             <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                    <span className="sr-only">Open menu</span>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => onEdit(user)}>
+                                        <Pen className="mr-2 h-4 w-4" /> Edit
+                                    </DropdownMenuItem>
+                                    {user.role !== 'pending' && (
+                                        <DropdownMenuItem onClick={() => onToggleStatus(user)}>
+                                            {user.role === 'disabled' ? <CheckCircle className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
+                                            {user.role === 'disabled' ? 'Enable' : 'Disable'}
+                                        </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive" onClick={() => onDelete(user)}>
+                                        <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    )
+}
+
+function ApprovalQueue({ users, onApprove, onDeny }: { users: UserProfile[], onApprove: (user: UserProfile) => void, onDeny: (user: UserProfile) => void }) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Pending Approvals</CardTitle>
+                <CardDescription>Review and approve or deny new user registrations.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {users.length === 0 ? (
+                    <p className="text-muted-foreground">No users are currently pending approval.</p>
+                ) : (
+                    <div className="space-y-4">
+                        {users.map(user => (
+                            <div key={user.uid} className="flex items-center justify-between p-3 border rounded-lg">
+                                <div>
+                                    <p className="font-semibold">{user.name}</p>
+                                    <p className="text-sm text-muted-foreground">{user.email}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button size="sm" variant="destructive" onClick={() => onDeny(user)}>
+                                        <ThumbsDown className="mr-2 h-4 w-4" /> Deny
+                                    </Button>
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => onApprove(user)}>
+                                        <ThumbsUp className="mr-2 h-4 w-4" /> Approve
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    )
+}
 
 export default function ResidentsPage() {
   const { firestore } = useFirebase();
@@ -109,25 +216,24 @@ export default function ResidentsPage() {
 
   const { data: settings, isLoading: isLoadingSettings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
-  // The state of the switch is now derived directly from the fetched settings.
-  // It defaults to true if settings are not yet loaded or don't exist.
   const isRegistrationOpen = settings?.isRegistrationOpen ?? true;
   const [isUpdating, setIsUpdating] = useState(false);
 
-
   const allUsersQuery = useMemoFirebase(() => {
     if (!firestore || userProfile?.role !== 'admin') return null;
-    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled']));
+    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled', 'pending']));
   }, [firestore, userProfile]);
 
   const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
-  const sortedUsers = allUsers?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
+  
+  const activeUsers = allUsers?.filter(u => u.role === 'viewer' || u.role === 'disabled').sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
+  const pendingUsers = allUsers?.filter(u => u.role === 'pending') || [];
 
-    useEffect(() => {
-        if (userProfile && userProfile.role !== 'admin') {
-            router.replace('/dashboard');
-        }
-    }, [userProfile, router]);
+  useEffect(() => {
+      if (userProfile && userProfile.role !== 'admin') {
+          router.replace('/dashboard');
+      }
+  }, [userProfile, router]);
 
   const handleUpdateUser = async (userId: string, data: Partial<UserProfile>) => {
     if (!firestore) return;
@@ -146,14 +252,13 @@ export default function ResidentsPage() {
     setUserToToggleStatus(null);
   }
   
-  const handleDeleteUser = async () => {
+  const handleDeleteUser = async (userToDelete: UserProfile) => {
     if (!firestore || !userToDelete) return;
-    // Note: This does not delete the user from Firebase Auth, only Firestore.
-    // A more complete solution would use a Cloud Function to handle this.
     const userRef = doc(firestore, 'users', userToDelete.uid);
     await deleteDoc(userRef);
-    toast({ title: "User Deleted", description: `${userToDelete.name} has been removed.` });
+    toast({ title: "User Deleted", description: `${userToDelete.name} has been removed from Firestore.` });
     setUserToDelete(null);
+    // Note: This does not delete from Firebase Auth. A cloud function is needed for that.
   }
 
   const handleToggleRegistration = async (isOpen: boolean) => {
@@ -175,14 +280,12 @@ export default function ResidentsPage() {
         setIsUpdating(false);
     }
   }
-
-  const getUserTypeBadge = (userType: UserProfile['userType']) => {
-    switch(userType) {
-        case 'student': return <Badge variant="secondary">Student</Badge>;
-        case 'resident': return <Badge variant="secondary" className="bg-blue-200 text-blue-800">Resident</Badge>;
-        case 'both': return <Badge variant="secondary" className="bg-purple-200 text-purple-800">Both</Badge>;
-        default: return <Badge variant="outline">N/A</Badge>;
-    }
+  
+  const handleApprove = async (user: UserProfile) => {
+      if(!firestore) return;
+      const userRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userRef, { role: 'viewer' });
+      toast({ title: "User Approved", description: `${user.name} has been approved and can now log in.` });
   }
 
   if (userProfile?.role !== 'admin') {
@@ -210,73 +313,44 @@ export default function ResidentsPage() {
                 <Label htmlFor="registration-switch">Allow Registration</Label>
             </div>
         </div>
-        <Card>
-            <CardHeader>
-                <CardTitle>All Users</CardTitle>
-                <CardDescription>View, edit, and manage all user accounts.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                 {isLoading ? (
-                    <div className="flex justify-center items-center h-40">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    </div>
-                ) : (
-                    <Table>
-                        <TableHeader>
-                        <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>ID / Room Number</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                        {sortedUsers.map(user => (
-                            <TableRow key={user.id}>
-                                <TableCell className="font-medium">{user.name}</TableCell>
-                                <TableCell>{user.roll || 'N/A'}</TableCell>
-                                <TableCell>{user.email}</TableCell>
-                                <TableCell>{getUserTypeBadge(user.userType)}</TableCell>
-                                <TableCell>
-                                    {user.role === 'disabled' ? (
-                                        <Badge variant="destructive">Disabled</Badge>
-                                    ) : (
-                                        <Badge variant="default" className="bg-green-600">Active</Badge>
-                                    )}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                     <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                            <span className="sr-only">Open menu</span>
-                                            <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                            <DropdownMenuItem onClick={() => setUserToEdit(user)}>
-                                                <Pen className="mr-2 h-4 w-4" /> Edit
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => setUserToToggleStatus(user)}>
-                                                {user.role === 'disabled' ? <CheckCircle className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
-                                                {user.role === 'disabled' ? 'Enable' : 'Disable'}
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem className="text-destructive" onClick={() => setUserToDelete(user)}>
-                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                        </TableBody>
-                    </Table>
-                 )}
-            </CardContent>
-        </Card>
+        
+        {isLoading ? (
+            <div className="flex justify-center items-center h-60">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        ) : (
+            <Tabs defaultValue="manage">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="manage">Manage Users</TabsTrigger>
+                    <TabsTrigger value="approve">
+                        Approve Users {pendingUsers.length > 0 && <Badge className="ml-2">{pendingUsers.length}</Badge>}
+                    </TabsTrigger>
+                </TabsList>
+                <TabsContent value="manage">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>All Active Users</CardTitle>
+                            <CardDescription>View, edit, and manage all user accounts.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                             <UserTable 
+                                users={activeUsers}
+                                onEdit={(user) => setUserToEdit(user)}
+                                onToggleStatus={(user) => setUserToToggleStatus(user)}
+                                onDelete={(user) => setUserToDelete(user)}
+                             />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                <TabsContent value="approve">
+                    <ApprovalQueue 
+                        users={pendingUsers}
+                        onApprove={handleApprove}
+                        onDeny={(user) => setUserToDelete(user)} // Denying will trigger delete confirmation
+                    />
+                </TabsContent>
+            </Tabs>
+        )}
         
         {userToEdit && (
             <EditUserDialog 
@@ -316,7 +390,7 @@ export default function ResidentsPage() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                    <AlertDialogAction onClick={() => handleDeleteUser(userToDelete)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
                 </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
