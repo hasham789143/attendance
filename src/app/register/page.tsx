@@ -24,6 +24,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { auth, firestore } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     if (!isRegistrationOpen) {
         toast({
             variant: 'destructive',
@@ -75,17 +77,11 @@ export default function RegisterPage() {
     } catch (error: any) {
       console.error('Registration Error:', error);
        if (error.code === 'auth/email-already-in-use') {
-        toast({
-          variant: 'destructive',
-          title: 'Registration Failed',
-          description: 'This email address is already in use. Please try logging in.',
-        });
+        setError('This email address is already in use. Please try logging in.');
+      } else if (error.code === 'auth/configuration-not-found') {
+        setError("Registration is not configured. Please enable Email/Password sign-in in your Firebase project's Authentication settings.");
       } else {
-        toast({
-          variant: 'destructive',
-          title: 'Registration Failed',
-          description: error.message || 'An unexpected error occurred.',
-        });
+        setError(error.message || 'An unexpected error occurred during registration.');
       }
     } finally {
       setLoading(false);
@@ -114,6 +110,12 @@ export default function RegisterPage() {
             </Alert>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
+               {error && (
+                <Alert variant="destructive">
+                    <AlertTitle>Registration Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
+               )}
                <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
                 <Input
