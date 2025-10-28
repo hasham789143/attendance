@@ -48,20 +48,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [hasCheckedAdmin, setHasCheckedAdmin] = useState(false);
 
-  // THIS IS THE FIX: This effect now checks for the primary admin user, assigns the claim if missing,
-  // and then reloads the page to ensure the new token with the claim is used by the app.
+  // This effect now correctly handles granting the admin role to the primary admin account.
   useEffect(() => {
     const checkAndGrantAdmin = async () => {
+      // Only run if we have an authenticated user, their email is the special admin email,
+      // and we haven't already performed this check in the current session.
       if (authUser && authUser.email === 'admin@gmail.com' && !hasCheckedAdmin) {
-        setHasCheckedAdmin(true); // Prevent re-running
-        const tokenResult = await authUser.getIdTokenResult();
+        setHasCheckedAdmin(true); // Mark as checked to prevent re-running.
+
+        // Force a refresh of the token to get the latest claims.
+        const tokenResult = await authUser.getIdTokenResult(true);
         
+        // If the 'role' claim is not 'admin', call the secure flow to set it.
         if (tokenResult.claims['role'] !== 'admin') {
             try {
                 const result = await setAdminClaim({ uid: authUser.uid });
                 if (result.success) {
                     toast({ title: "Admin Role Granted", description: "Privileges updated. The app will now reload." });
-                    // Force a reload to fetch the new token and apply permissions.
+                    // CRITICAL: Force a reload to fetch the new token with the admin claim
+                    // and ensure the entire React tree re-renders with the correct permissions.
                     setTimeout(() => window.location.reload(), 1500);
                 }
             } catch (error: any) {
@@ -70,7 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    checkAndGrantAdmin();
+    // Only run this check when the authenticated user object is available.
+    if (authUser) {
+      checkAndGrantAdmin();
+    }
   }, [authUser, hasCheckedAdmin, toast]);
 
 

@@ -58,7 +58,7 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // THIS IS THE FIX: Check if the registering user is the special admin
+      // Assign 'admin' role if the email is 'admin@gmail.com', otherwise 'viewer'.
       const role = email.toLowerCase() === 'admin@gmail.com' ? 'admin' : 'viewer';
 
       const userProfileData = {
@@ -71,7 +71,7 @@ export default function RegisterPage() {
       };
 
       // Create user profile in Firestore using the non-blocking helper
-      setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, {});
+      setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
       
       toast({ title: 'Registration Successful', description: 'Redirecting to your dashboard...'});
       router.push('/dashboard');
