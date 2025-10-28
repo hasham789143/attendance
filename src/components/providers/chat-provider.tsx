@@ -1,11 +1,10 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { useAuth } from './auth-provider';
 import { useStore } from './store-provider';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, writeBatch, getDocs, Query } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, writeBatch, getDocs, Query, DocumentData } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -37,61 +36,60 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         const unsubscribes: (() => void)[] = [];
 
-        // Logic for admin: subscribe to all student chats
-        if (userProfile.role === 'admin') {
-            students.forEach(student => {
-                const q = query(
-                    collection(firestore, 'chats', student.uid, 'messages'),
-                    where('isRead', '==', false),
-                    where('senderUid', '==', student.uid)
-                );
+        const setupSubscription = (chatOwnerUid: string, isOwnChat: boolean) => {
+             const messagesRef = collection(firestore, 'chats', chatOwnerUid, 'messages');
+             let q: Query<DocumentData>;
 
-                const unsubscribe = onSnapshot(q, snapshot => {
-                    setUnreadCounts(prev => ({ ...prev, [student.uid]: snapshot.size }));
-                },
-                (error) => {
-                    // Don't throw a global error for admins, as they might not have access to all chats
-                    // depending on more granular rules. This prevents the app from crashing for an admin
-                    // if one of many chat subscriptions fails.
-                    console.error(`Could not subscribe to chat for student ${student.uid}:`, error.message);
-                });
-                unsubscribes.push(unsubscribe);
-            });
-        }
-        // Logic for student: subscribe to their own chat
-        else if (userProfile.role === 'viewer') {
-            const q = query(
-                collection(firestore, 'chats', userProfile.uid, 'messages'),
-                where('isRead', '==', false),
-                where('senderUid', '!=', userProfile.uid)
-            );
+            if (isOwnChat) {
+                // A user looking at their own chat only needs to count messages sent by others (admin)
+                q = query(messagesRef, where('isRead', '==', false), where('senderUid', '!=', userProfile.uid));
+            } else {
+                // An admin looking at a student's chat only needs to count messages sent by that student
+                q = query(messagesRef, where('isRead', '==', false), where('senderUid', '==', chatOwnerUid));
+            }
 
             const unsubscribe = onSnapshot(q, snapshot => {
-                setUnreadCounts({ [userProfile.uid]: snapshot.size });
+                setUnreadCounts(prev => ({ ...prev, [chatOwnerUid]: snapshot.size }));
 
-                // Show toast for new messages if chat is not active
-                if (snapshot.docChanges().some(change => change.type === 'added') && activeChatStudentUid !== userProfile.uid) {
+                 // Show toast for new messages for a student if their chat is not active
+                if (isOwnChat && snapshot.docChanges().some(change => change.type === 'added') && activeChatStudentUid !== chatOwnerUid) {
                     snapshot.docChanges().forEach(change => {
                          if (change.type === 'added') {
                              const message = change.doc.data();
-                             if(message.senderUid !== userProfile.uid) {
-                                 toast({
-                                    title: `New message from ${message.senderName}`,
-                                    description: message.text,
-                                 });
-                             }
+                             toast({
+                                title: `New message from ${message.senderName}`,
+                                description: message.text,
+                             });
                          }
                     })
                 }
             },
             (error) => {
-                const contextualError = new FirestorePermissionError({
-                    path: `chats/${userProfile.uid}/messages`,
-                    operation: 'list',
-                });
-                errorEmitter.emit('permission-error', contextualError);
+                // For a student, a failed subscription is a critical error.
+                // For an admin, it might just mean one of many chats is inaccessible.
+                if (isOwnChat) {
+                    const contextualError = new FirestorePermissionError({
+                        path: `chats/${chatOwnerUid}/messages`,
+                        operation: 'list',
+                    });
+                    errorEmitter.emit('permission-error', contextualError);
+                } else {
+                     console.error(`Admin could not subscribe to chat for student ${chatOwnerUid}:`, error.message);
+                }
             });
             unsubscribes.push(unsubscribe);
+        };
+
+
+        // Logic for admin: subscribe to all student chats
+        if (userProfile.role === 'admin') {
+            students.forEach(student => {
+                setupSubscription(student.uid, false);
+            });
+        }
+        // Logic for student: subscribe to their own chat
+        else if (userProfile.role === 'viewer') {
+            setupSubscription(userProfile.uid, true);
         }
 
         return () => {
@@ -104,39 +102,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (firestore && activeChatStudentUid && userProfile) {
             const markAsRead = async () => {
                 let q: Query;
+                const messagesRef = collection(firestore, 'chats', activeChatStudentUid, 'messages');
                 
                 // Build the query to find unread messages sent by the *other* party
                 if (userProfile.role === 'admin') {
                     // Admin is viewing a student's chat, mark messages sent by the student as read
-                    q = query(
-                        collection(firestore, 'chats', activeChatStudentUid, 'messages'),
-                        where('isRead', '==', false),
-                        where('senderUid', '==', activeChatStudentUid)
-                    );
+                    q = query(messagesRef, where('isRead', '==', false), where('senderUid', '==', activeChatStudentUid));
                 } else {
                     // Student is viewing their own chat, mark messages sent by an admin as read
-                    q = query(
-                        collection(firestore, 'chats', activeChatStudentUid, 'messages'),
-                        where('isRead', '==', false),
-                        where('senderUid', '!=', userProfile.uid) 
-                    );
+                    q = query(messagesRef, where('isRead', '==', false), where('senderUid', '!=', userProfile.uid));
                 }
 
-                const snapshot = await getDocs(q);
-                if (snapshot.empty) return;
-
-                const batch = writeBatch(firestore);
-                snapshot.docs.forEach(doc => {
-                    batch.update(doc.ref, { isRead: true });
-                });
-                await batch.commit();
+                try {
+                    const snapshot = await getDocs(q);
+                    if (snapshot.empty) return;
+    
+                    const batch = writeBatch(firestore);
+                    snapshot.docs.forEach(doc => {
+                        batch.update(doc.ref, { isRead: true });
+                    });
+                    await batch.commit();
+                } catch (error) {
+                    // Don't emit a global error here, just log it. A failed write is less critical.
+                    console.error(`Failed to mark messages as read for chat ${activeChatStudentUid}:`, error);
+                }
             };
 
-            markAsRead().catch((error) => {
-                // We don't emit a global error here because a failed write is less critical
-                // than a failed read, and we don't want to crash the app.
-                 console.error(`Failed to mark messages as read for chat ${activeChatStudentUid}:`, error);
-            });
+            markAsRead();
         }
     }, [firestore, activeChatStudentUid, userProfile]);
 
