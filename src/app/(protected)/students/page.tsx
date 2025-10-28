@@ -182,7 +182,7 @@ export default function ResidentsPage() {
 
   const allUsersQuery = useMemoFirebase(() => {
     if (!firestore || userProfile?.role !== 'admin') return null;
-    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled', 'admin']));
+    return collection(firestore, "users");
   }, [firestore, userProfile]);
 
   const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
