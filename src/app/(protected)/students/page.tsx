@@ -4,7 +4,7 @@ import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase'
 import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban, ThumbsUp, ThumbsDown, ShieldCheck } from 'lucide-react';
 import { UserProfile, useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -42,6 +42,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { setRegistrationStatus } from '@/ai/flows/set-registration-status.flow';
+import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
@@ -92,7 +93,7 @@ function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave:
     )
 }
 
-function UserTable({ users, onEdit, onToggleStatus, onDelete }: { users: UserProfile[], onEdit: (user: UserProfile) => void, onToggleStatus: (user: UserProfile) => void, onDelete: (user: UserProfile) => void }) {
+function UserTable({ users, onEdit, onToggleStatus, onDelete, onPromote }: { users: UserProfile[], onEdit: (user: UserProfile) => void, onToggleStatus: (user: UserProfile) => void, onDelete: (user: UserProfile) => void, onPromote: (user: UserProfile) => void }) {
     
     const getUserTypeBadge = (userType: UserProfile['userType']) => {
         switch(userType) {
@@ -123,7 +124,9 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete }: { users: UserPro
                         <TableCell>{user.email}</TableCell>
                         <TableCell>{getUserTypeBadge(user.userType)}</TableCell>
                         <TableCell>
-                            {user.role === 'disabled' ? (
+                            {user.role === 'admin' ? (
+                                <Badge variant="default" className="bg-purple-600">Admin</Badge>
+                            ) : user.role === 'disabled' ? (
                                 <Badge variant="destructive">Disabled</Badge>
                             ) : user.role === 'pending' ? (
                                 <Badge variant="secondary" className="bg-yellow-500 text-black">Pending</Badge>
@@ -144,10 +147,16 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete }: { users: UserPro
                                     <DropdownMenuItem onClick={() => onEdit(user)}>
                                         <Pen className="mr-2 h-4 w-4" /> Edit
                                     </DropdownMenuItem>
-                                    {user.role !== 'pending' && (
+                                    {user.role !== 'pending' && user.role !== 'admin' && (
                                         <DropdownMenuItem onClick={() => onToggleStatus(user)}>
                                             {user.role === 'disabled' ? <CheckCircle className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
                                             {user.role === 'disabled' ? 'Enable' : 'Disable'}
+                                        </DropdownMenuItem>
+                                    )}
+                                     {user.role === 'viewer' && (
+                                        <DropdownMenuItem onClick={() => onPromote(user)}>
+                                            <ShieldCheck className="mr-2 h-4 w-4" />
+                                            Promote to Admin
                                         </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
@@ -208,6 +217,7 @@ export default function ResidentsPage() {
   const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
   const [userToToggleStatus, setUserToToggleStatus] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [userToPromote, setUserToPromote] = useState<UserProfile | null>(null);
   
   const settingsDocRef = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -221,12 +231,12 @@ export default function ResidentsPage() {
 
   const allUsersQuery = useMemoFirebase(() => {
     if (!firestore || userProfile?.role !== 'admin') return null;
-    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled', 'pending']));
+    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled', 'pending', 'admin']));
   }, [firestore, userProfile]);
 
   const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
   
-  const activeUsers = allUsers?.filter(u => u.role === 'viewer' || u.role === 'disabled').sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
+  const activeUsers = allUsers?.filter(u => u.role !== 'pending').sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
   const pendingUsers = allUsers?.filter(u => u.role === 'pending') || [];
 
   useEffect(() => {
@@ -288,6 +298,28 @@ export default function ResidentsPage() {
       toast({ title: "User Approved", description: `${user.name} has been approved and can now log in.` });
   }
 
+  const handlePromote = async () => {
+    if (!userToPromote || !firestore) return;
+    try {
+        const { success } = await setAdminClaim({ uid: userToPromote.uid });
+        if (success) {
+            const userRef = doc(firestore, 'users', userToPromote.uid);
+            await updateDoc(userRef, { role: 'admin' });
+            toast({ title: "User Promoted", description: `${userToPromote.name} is now an administrator.` });
+        } else {
+            throw new Error("Failed to set admin claim.");
+        }
+    } catch(e: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Promotion Failed',
+            description: e.message || 'Could not promote user to admin.'
+        });
+    } finally {
+        setUserToPromote(null);
+    }
+  }
+
   if (userProfile?.role !== 'admin') {
      return (
        <div className="flex h-screen w-full items-center justify-center">
@@ -338,6 +370,7 @@ export default function ResidentsPage() {
                                 onEdit={(user) => setUserToEdit(user)}
                                 onToggleStatus={(user) => setUserToToggleStatus(user)}
                                 onDelete={(user) => setUserToDelete(user)}
+                                onPromote={(user) => setUserToPromote(user)}
                              />
                         </CardContent>
                     </Card>
@@ -391,6 +424,23 @@ export default function ResidentsPage() {
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={() => handleDeleteUser(userToDelete)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )}
+
+        {userToPromote && (
+             <AlertDialog open={true} onOpenChange={(isOpen) => !isOpen && setUserToPromote(null)}>
+                <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Promote to Administrator?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Are you sure you want to grant administrator privileges to {userToPromote.name}? They will have full access to manage users and sessions. This action cannot be easily undone.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePromote}>Yes, Promote</AlertDialogAction>
                 </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
