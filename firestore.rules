@@ -1,9 +1,8 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
     // Allow any authenticated user to read and write to any document.
-    // All access control logic will be handled in the client-side application code.
+    // All access control logic will be handled in the client-side application.
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
