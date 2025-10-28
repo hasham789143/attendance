@@ -8,7 +8,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { initializeApp, getApps, App } from 'firebase-admin/app';
+import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
 
 const SetRegistrationStatusInputSchema = z.object({
   isOpen: z.boolean().describe('Whether new user registration should be open or closed.'),
@@ -22,8 +22,10 @@ function getAdminApp(): App {
   if (apps.length > 0) {
     return apps[0];
   }
-  // This will use the default service account credentials from the environment.
-  return initializeApp();
+  // Use Application Default Credentials
+  return initializeApp({
+    credential: applicationDefault(),
+  });
 }
 
 /**
@@ -93,4 +95,3 @@ const setRegistrationStatusFlow = ai.defineFlow(
       );
   }
 );
-
