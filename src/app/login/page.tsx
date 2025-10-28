@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -6,26 +7,29 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useFirebase } from '@/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
+import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
+import { useAuth } from '@/components/providers/auth-provider';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [elevationLoading, setElevationLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { auth } = useFirebase();
+  const { auth, user } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); // Clear previous errors
+    setError(null);
     if (!email || !password) {
       setError('Please enter both email and password.');
       return;
@@ -45,6 +49,31 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+  
+  const handleElevatePrivileges = async () => {
+    if (!user) {
+        toast({
+            variant: 'destructive',
+            title: 'Not Logged In',
+            description: 'You must be logged in to elevate privileges. Please log in first, then click this button again if it appears.'
+        });
+        return;
+    }
+    setElevationLoading(true);
+    try {
+        const result = await setAdminClaim({ uid: user.uid });
+        if (result.success) {
+            toast({ title: "Privileges Elevated", description: "Admin role granted. The app will now reload." });
+            // Force a reload to fetch the new token with the admin claim.
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+             throw new Error("The elevation process did not complete successfully.");
+        }
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Failed to Grant Admin Role', description: error.message });
+        setElevationLoading(false);
+    }
+  }
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEmail(e.target.value);
@@ -55,6 +84,8 @@ export default function LoginPage() {
     setPassword(e.target.value);
     if (error) setError(null);
   }
+
+  const showElevationButton = user && user.email === 'admin@gmail.com';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -109,16 +140,25 @@ export default function LoginPage() {
                     </Button>
                 </div>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Login
-            </Button>
-
             {error && (
               <p className="text-sm font-medium text-destructive text-center">
                 {error}
               </p>
             )}
+            
+            <div className="flex flex-col gap-2">
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Login
+                </Button>
+
+                {showElevationButton && (
+                    <Button type="button" variant="outline" className="w-full" disabled={elevationLoading} onClick={handleElevatePrivileges}>
+                        {elevationLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                        Elevate Privileges
+                    </Button>
+                )}
+            </div>
             
             <div className="text-center text-sm text-muted-foreground pt-2">
               Don't have an account?{' '}

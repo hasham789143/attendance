@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
@@ -43,44 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { data: userProfileData, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
   
-  // The primary loading state is when auth is loading or when we have a user but are still fetching their profile.
   const loading = isAuthLoading || (!!authUser && isProfileLoading);
-
-  const [hasCheckedAdmin, setHasCheckedAdmin] = useState(false);
-
-  // This effect now correctly handles granting the admin role to the primary admin account.
-  useEffect(() => {
-    const checkAndGrantAdmin = async () => {
-      // Only run if we have an authenticated user, their email is the special admin email,
-      // and we haven't already performed this check in the current session.
-      if (authUser && authUser.email === 'admin@gmail.com' && !hasCheckedAdmin) {
-        setHasCheckedAdmin(true); // Mark as checked to prevent re-running.
-
-        // Force a refresh of the token to get the latest claims.
-        const tokenResult = await authUser.getIdTokenResult(true);
-        
-        // If the 'role' claim is not 'admin', call the secure flow to set it.
-        if (tokenResult.claims['role'] !== 'admin') {
-            try {
-                const result = await setAdminClaim({ uid: authUser.uid });
-                if (result.success) {
-                    toast({ title: "Admin Role Granted", description: "Privileges updated. The app will now reload." });
-                    // CRITICAL: Force a reload to fetch the new token with the admin claim
-                    // and ensure the entire React tree re-renders with the correct permissions.
-                    setTimeout(() => window.location.reload(), 1500);
-                }
-            } catch (error: any) {
-                toast({ variant: 'destructive', title: 'Failed to Grant Admin Role', description: error.message });
-            }
-        }
-      }
-    };
-    // Only run this check when the authenticated user object is available.
-    if (authUser) {
-      checkAndGrantAdmin();
-    }
-  }, [authUser, hasCheckedAdmin, toast]);
-
 
   useEffect(() => {
     if (!loading && authUser && userProfileData?.role === 'disabled') {
@@ -96,14 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [auth, router]);
   
-  // This state now specifically handles the case where the user is logged in
-  // but their profile document might not exist.
   const [profileExists, setProfileExists] = useState(true);
 
   useEffect(() => {
     if (authUser && !isProfileLoading && !userProfileData) {
-      // If we've finished loading and there's still no profile data for a logged-in user,
-      // it means the document is missing.
       setProfileExists(false);
     } else {
       setProfileExists(true);
@@ -119,8 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  // If the user is authenticated but their profile doesn't exist, show an error.
-  // This is a more specific and accurate check.
   if (authUser && !profileExists) {
      return (
        <div className="flex h-screen w-full flex-col items-center justify-center gap-4 text-center">
