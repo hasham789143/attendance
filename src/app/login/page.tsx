@@ -14,7 +14,6 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
-import { useAuth } from '@/components/providers/auth-provider';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -85,6 +84,7 @@ export default function LoginPage() {
     if (error) setError(null);
   }
 
+  // Show the elevation button only if the currently logged-in user's email is admin@gmail.com
   const showElevationButton = user && user.email === 'admin@gmail.com';
 
   return (
