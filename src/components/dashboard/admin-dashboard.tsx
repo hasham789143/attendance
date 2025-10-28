@@ -75,7 +75,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   };
   
   const getMissedScans = (record: AttendanceRecord) => {
-    if (!session || session.totalScans < 2) return null;
+    if (!session || !record.scans || session.totalScans < 2) return null;
 
     const missed: number[] = [];
     const hasAnyScan = record.scans.some(s => s.status !== 'absent');
@@ -95,6 +95,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   }
 
   const getTime = (record: AttendanceRecord) => {
+    if (!record || !record.scans) return '—';
     const lastScan = [...record.scans].reverse().find(s => s.timestamp);
     return lastScan?.timestamp ? new Date(lastScan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
   }
@@ -406,7 +407,3 @@ export function AdminDashboard() {
 
 // Helper type
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'left_early';
-
-    
-
-    

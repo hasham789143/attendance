@@ -23,16 +23,26 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast.tsx';
+import { useAuth } from '@/components/providers/auth-provider';
+import { useRouter } from 'next/navigation';
 
 
 export default function ReportsPage() {
   const { firestore } = useFirebase();
+  const { userProfile } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
   const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (userProfile && userProfile.role !== 'admin') {
+      router.replace('/dashboard');
+    }
+  }, [userProfile, router]);
 
   const sessionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -87,6 +97,13 @@ export default function ReportsPage() {
     }
   };
 
+  if (userProfile?.role !== 'admin') {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
@@ -30,7 +31,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [activeChatStudentUid, setActiveChatStudentUid] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!firestore || !userProfile || (userProfile.role === 'admin' && students.length === 0)) {
+        if (!firestore || !userProfile || (userProfile.role === 'admin' && (!students || students.length === 0))) {
             return;
         }
 
