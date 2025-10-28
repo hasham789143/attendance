@@ -53,8 +53,8 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
       });
       return;
     }
-    if (!auth) {
-        toast({ variant: 'destructive', title: 'Auth Error', description: 'Firebase Auth is not available.' });
+    if (!auth || !firestore) {
+        toast({ variant: 'destructive', title: 'Auth Error', description: 'Firebase services are not available.' });
         return;
     }
     setLoading(true);
@@ -74,16 +74,19 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             userType,
         };
 
-        setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
-
-        // If the new user is an admin, set their custom claim
+        // If the new user is an admin, set their custom claim *first*.
+        // This is a server-side operation.
         if (role === 'admin') {
             const result = await setAdminClaim({ uid: user.uid });
             if (!result.success) {
-                throw new Error("Failed to set admin claim for the new user.");
+                // If the claim fails, we should not proceed to save the user profile.
+                // You might want to delete the user from Auth here as well for cleanup.
+                throw new Error("Failed to set admin claim for the new user. Registration aborted.");
             }
         }
-
+        
+        // Now, save the user profile data to Firestore. This is a client-side operation.
+        setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
 
         toast({
             title: 'User Registered Successfully',
