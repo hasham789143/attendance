@@ -38,7 +38,7 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!isRegistrationOpen) {
+    if (!isRegistrationOpen && email.toLowerCase() !== 'admin@gmail.com') {
         toast({
             variant: 'destructive',
             title: 'Registration Closed',
@@ -59,12 +59,15 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // Check if the registering user is the special admin
+      const role = email.toLowerCase() === 'admin@gmail.com' ? 'admin' : 'viewer';
+
       const userProfileData = {
         uid: user.uid,
         name,
         roll,
         email,
-        role: 'viewer', // Default role for new sign-ups
+        role: role,
         userType,
       };
 
@@ -101,7 +104,7 @@ export default function RegisterPage() {
             <div className="flex justify-center items-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : !isRegistrationOpen ? (
+          ) : !isRegistrationOpen && email.toLowerCase() !== 'admin@gmail.com' ? (
              <Alert variant="destructive">
                 <AlertTitle>Registration Closed</AlertTitle>
                 <AlertDescription>
