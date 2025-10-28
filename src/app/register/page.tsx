@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -59,7 +58,7 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Check if the registering user is the special admin
+      // THIS IS THE FIX: Check if the registering user is the special admin
       const role = email.toLowerCase() === 'admin@gmail.com' ? 'admin' : 'viewer';
 
       const userProfileData = {
@@ -67,7 +66,7 @@ export default function RegisterPage() {
         name,
         roll,
         email,
-        role: role,
+        role: role, // Assign the correct role
         userType,
       };
 

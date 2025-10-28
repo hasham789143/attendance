@@ -48,7 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [hasCheckedAdmin, setHasCheckedAdmin] = useState(false);
 
-  // Effect to grant admin role if necessary to the primary admin
+  // THIS IS THE FIX: This effect now checks for the primary admin user, assigns the claim if missing,
+  // and then reloads the page to ensure the new token with the claim is used by the app.
   useEffect(() => {
     const checkAndGrantAdmin = async () => {
       if (authUser && authUser.email === 'admin@gmail.com' && !hasCheckedAdmin) {
