@@ -193,17 +193,20 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             </div>
 
             {/* System Role */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="role" className="text-right">System Role</Label>
-              <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="viewer">User (Student/Resident)</SelectItem>
-                  <SelectItem value="admin">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="role" className="text-right pt-2">System Role</Label>
+              <div className="col-span-3 space-y-2">
+                <Select onValueChange={(value) => setRole(value as 'viewer' | 'admin')} value={role}>
+                    <SelectTrigger>
+                    <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="viewer">User (Student/Resident)</SelectItem>
+                    <SelectItem value="admin">Administrator</SelectItem>
+                    </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Accounts created here are active immediately.</p>
+              </div>
             </div>
 
             {/* User Type */}
