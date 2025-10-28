@@ -148,6 +148,8 @@ export default function ResidentsPage() {
   
   const handleDeleteUser = async () => {
     if (!firestore || !userToDelete) return;
+    // Note: This does not delete the user from Firebase Auth, only Firestore.
+    // A more complete solution would use a Cloud Function to handle this.
     const userRef = doc(firestore, 'users', userToDelete.uid);
     await deleteDoc(userRef);
     toast({ title: "User Deleted", description: `${userToDelete.name} has been removed.` });

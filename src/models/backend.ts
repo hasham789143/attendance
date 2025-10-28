@@ -1,3 +1,4 @@
+
 'use client';
 // Note: This file is used to generate the backend.json file.
 // It is not used directly by the application.
