@@ -9,9 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useFirebase, setDocumentNonBlocking, useDoc, useMemoFirebase } from '@/firebase';
+import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -67,7 +67,7 @@ export default function RegisterPage() {
         userType,
       };
 
-      setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
+      await setDoc(doc(firestore, 'users', user.uid), userProfileData);
       
       toast({
         title: 'Registration Successful!',
