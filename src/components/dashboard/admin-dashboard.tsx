@@ -32,6 +32,7 @@ function AttendanceList({ filter }: { filter: 'all' | 'present' | 'absent' | 'le
   const sortedAttendance = useMemo(() => Array.from(attendance.values()).sort((a, b) => (a.student.roll || '').localeCompare(b.student.roll || '')), [attendance]);
   
   const getFinalStatus = (record: AttendanceRecord): AttendanceStatus => {
+      // Add a guard clause to handle cases where record or record.scans is not available
       if (!record || !record.scans) return 'absent';
       if (record.correctionRequest?.status === 'pending') return 'absent';
       

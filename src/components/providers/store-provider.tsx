@@ -93,7 +93,6 @@ function useUsers(userProfile: UserProfile | null) {
         }
         
         // For admins, fetch all user types they might manage.
-        // This query is stable and doesn't depend on the attendanceMode toggle.
         return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
 
     }, [firestore, userProfile]);
@@ -111,6 +110,8 @@ export function StoreProvider({ children, userProfile }: { children: ReactNode, 
   const { users: allUsers, isLoading: areUsersLoading } = useUsers(userProfile);
 
 
+  // CRITICAL CHANGE: Only define the sessionDocRef if the userProfile is loaded.
+  // This prevents hooks from running with an invalid path before permissions are known.
   const sessionDocRef = useMemoFirebase(() => {
     if (!firestore || !userProfile) return null;
     return doc(firestore, 'sessions', `${attendanceMode}-current`);
@@ -734,5 +735,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    

@@ -20,6 +20,7 @@ export interface UserProfile {
   role: 'admin' | 'viewer' | 'disabled' | 'pending';
   userType: 'student' | 'resident' | 'both';
   roll?: string;
+  id: string; // Add id to match WithId<T>
 }
 
 // The shape of the context value
@@ -42,23 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return doc(firestore, 'users', authUser.uid);
   }, [firestore, authUser]);
 
-  const { data: userProfileData, isLoading: isProfileLoading } = useDoc<UserProfile>(userDocRef);
+  const { data: userProfileData, isLoading: isProfileLoading, error: profileError } = useDoc<UserProfile>(userDocRef);
   
   const loading = isAuthLoading || (!!authUser && isProfileLoading);
-
-  useEffect(() => {
-    if (!loading && authUser && userProfileData) {
-      if (userProfileData.role === 'disabled') {
-        toast({ title: 'Account Disabled', description: 'Your account has been disabled by an administrator.', variant: 'destructive'});
-        firebaseSignOut(auth);
-        router.replace('/login');
-      } else if (userProfileData.role === 'pending') {
-        toast({ title: 'Account Pending', description: 'Your account is awaiting administrator approval.' });
-        firebaseSignOut(auth);
-        router.replace('/login');
-      }
-    }
-  }, [loading, authUser, userProfileData, auth, router, toast]);
   
   const logout = useCallback(async () => {
     if (auth) {
@@ -66,17 +53,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.push('/login');
     }
   }, [auth, router]);
+
+  useEffect(() => {
+    if (!loading && authUser && userProfileData) {
+      if (userProfileData.role === 'disabled') {
+        toast({ title: 'Account Disabled', description: 'Your account has been disabled by an administrator.', variant: 'destructive'});
+        logout();
+      } else if (userProfileData.role === 'pending') {
+        toast({ title: 'Account Pending', description: 'Your account is awaiting administrator approval.' });
+        logout();
+      }
+    }
+  }, [loading, authUser, userProfileData, logout, toast]);
   
   const [profileExists, setProfileExists] = useState(true);
 
   useEffect(() => {
     if (authUser && !isProfileLoading && !userProfileData) {
+      // This case means the user is authenticated, we've finished checking for their profile,
+      // and it doesn't exist. This is an error state.
       setProfileExists(false);
-    } else {
-      setProfileExists(true);
     }
   }, [authUser, isProfileLoading, userProfileData]);
-
 
   if (loading) {
     return (
@@ -86,21 +84,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  if (authUser && !profileExists) {
+  // If the user is authenticated but their profile document doesn't exist in Firestore,
+  // it's a critical error. We should not proceed.
+  if (authUser && !userProfileData) {
      return (
        <div className="flex h-screen w-full flex-col items-center justify-center gap-4 text-center">
          <p className="text-xl font-semibold">Could not load user profile.</p>
-         <p className="text-muted-foreground">The user document might be missing in Firestore.</p>
+         <p className="text-muted-foreground">The user document might be missing in Firestore, or there was an error fetching it.</p>
+         {profileError && <p className="text-xs text-destructive">{profileError.message}</p>}
          <Button onClick={logout}>Return to Login</Button>
        </div>
      );
   }
 
-
-  const userProfile = userProfileData ? { ...userProfileData, id: userProfileData.uid } as UserProfile : null;
+  const value: AuthContextType = {
+    user: authUser,
+    userProfile: userProfileData,
+    loading,
+    logout
+  };
 
   return (
-    <AuthContext.Provider value={{ user: authUser, userProfile, loading, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
