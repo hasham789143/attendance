@@ -70,14 +70,6 @@ export interface AttendanceRecord {
 }
 
 /**
- * Application-wide settings.
- */
-export interface Settings {
-    isSelfieRequired: boolean;
-    isRegistrationOpen: boolean;
-}
-
-/**
  * Represents a text translation request and result.
  */
 export interface Translate {

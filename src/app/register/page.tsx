@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
+import { useFirebase } from '@/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
@@ -29,22 +29,10 @@ export default function RegisterPage() {
   const { toast } = useToast();
   const router = useRouter();
 
-  const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'attendance') : null, [firestore]);
-  const { data: settings, isLoading: settingsLoading } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
-  
-  const isRegistrationOpen = settings?.isRegistrationOpen ?? true;
-
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!isRegistrationOpen) {
-        toast({
-            variant: 'destructive',
-            title: 'Registration Closed',
-            description: 'The administrator has disabled new registrations.',
-        });
-        return;
-    }
+    
     if (!name || !email || !password || !userType) {
       toast({
         variant: 'destructive',
@@ -63,7 +51,7 @@ export default function RegisterPage() {
         name,
         roll,
         email,
-        role: 'viewer', // New users are now viewers by default
+        role: 'viewer', // New users are viewers by default
         userType,
       };
 
@@ -74,6 +62,8 @@ export default function RegisterPage() {
         description: 'You can now log in with your credentials.',
       });
       
+      // Sign out the new user so the admin/current user remains logged in
+      // or to force the new user to log in themselves.
       await auth.signOut();
       router.push('/login');
 
@@ -100,18 +90,6 @@ export default function RegisterPage() {
           <CardDescription>Join Class Guardian today.</CardDescription>
         </CardHeader>
         <CardContent>
-          {settingsLoading ? (
-            <div className="flex justify-center items-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : !isRegistrationOpen ? (
-             <Alert variant="destructive">
-                <AlertTitle>Registration Closed</AlertTitle>
-                <AlertDescription>
-                    Registration is currently closed by the administrator. Please check back later or contact support if you believe this is an error.
-                </AlertDescription>
-            </Alert>
-          ) : (
             <form onSubmit={handleRegister} className="space-y-4">
                {error && (
                 <Alert variant="destructive">
@@ -191,7 +169,6 @@ export default function RegisterPage() {
                 </Link>
               </div>
             </form>
-          )}
         </CardContent>
       </Card>
     </div>
