@@ -62,9 +62,9 @@ export default function LoginPage() {
     try {
         const result = await setAdminClaim({ uid: user.uid });
         if (result.success) {
-            toast({ title: "Privileges Elevated", description: "Admin role granted. The app will now reload." });
+            toast({ title: "Privileges Elevated", description: "Admin role granted. The app will now reload to apply changes." });
             // Force a reload to fetch the new token with the admin claim.
-            setTimeout(() => window.location.reload(), 1500);
+            setTimeout(() => window.location.reload(), 2000);
         } else {
              throw new Error("The elevation process did not complete successfully.");
         }
