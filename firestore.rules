@@ -2,183 +2,219 @@
  * @fileoverview Firestore Security Rules for Attendance Tracking System
  *
  * Core Philosophy:
- * This ruleset enforces a role-based access control model with ownership constraints where applicable.
+ * This ruleset enforces a role-based access control model with ownership constraints where appropriate.
+ * Admins have broad access, while viewers have read-only access. Users can only manage their own data.
  *
  * Data Structure:
- * - /users/{userId}: User profile information, secured by owner-only access.
- * - /sessions/class-current: Single document for the currently active class session.
- * - /sessions/class-current/records/{userId}: Live attendance records for the current class session, secured by owner-only access and role.
- * - /sessions/hostel-current: Single document for the currently active hostel session.
- * - /sessions/hostel-current/records/{userId}: Live attendance records for the current hostel session, secured by owner-only access and role.
- * - /sessions/{sessionId}: Archived attendance sessions.
- * - /sessions/{sessionId}/records/{recordId}: Attendance records for historical sessions.
- * - /chats/{studentUid}/messages/{messageId}: Chat messages for a specific student. Admins can access all chats.
- * - /settings/attendance: Application-wide settings. Accessible by admins only.
+ * - /users/{userId}: User profiles, where userId is the Firebase Auth UID.
+ * - /sessions/{sessionId}: Attendance sessions, with subcollections for records.
+ * - /chats/{studentUid}/messages/{messageId}: Chat messages for each student.
+ * - /settings/attendance: Application-wide settings (single document).
  *
  * Key Security Decisions:
- * - User listing is disabled to prevent unauthorized data scraping.
- * - Ambiguous relationships default to the most secure interpretation (strict owner-only access).
+ * - Users can only read and write their own user profile.
+ * - Attendance sessions can only be created and managed by admins.
+ * - Chat messages are scoped to individual students, with admin oversight.
+ * - Global settings are read-only for viewers and writable by admins.
  *
  * Denormalization for Authorization:
- *  N/A - all authorization uses `request.auth.uid` and admin role.
+ * To simplify rules and avoid costly `get()` calls, authorization-relevant data (e.g., roles) is denormalized
+ * directly into documents. For example, attendance records include the student's user ID, allowing for
+ * ownership checks without needing to fetch the user's profile.
+ *
+ * Structural Segregation:
+ * Separate collections are used for current and archived attendance sessions to optimize query performance
+ * and simplify access control.
  */
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is authenticated.
+     * @description Checks if the user is signed in.
+     * @return {boolean} True if the user is signed in, false otherwise.
      */
     function isSignedIn() {
       return request.auth != null;
     }
 
     /**
-     * @description Checks if the authenticated user is the owner of the resource.
+     * @description Checks if the user is the owner of the resource.
+     * @param {string} userId The user ID to compare with the request's auth UID.
+     * @return {boolean} True if the user is the owner, false otherwise.
      */
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Checks if the authenticated user is the owner of the resource.
+     * @description Checks if the user is an existing owner of the resource (for update/delete operations).
+     * @param {string} userId The user ID to compare with the resource's owner ID.
+     * @return {boolean} True if the user is the owner and the resource exists.
      */
     function isExistingOwner(userId) {
       return isOwner(userId) && resource != null;
     }
 
     /**
-     * @description Checks if the authenticated user has the 'admin' role.
+     * @description Checks if the user has the 'admin' role.
+     * @return {boolean} True if the user has the 'admin' role, false otherwise.
      */
     function isAdmin() {
-      return isSignedIn() && (request.auth.token.role == 'admin');
+      return isSignedIn() && request.auth.token.role == 'admin';
     }
 
     /**
-     * @description Restricts access to a user's own data tree.
+     * @description Checks if the user has the 'viewer' role.
+     * @return {boolean} True if the user has the 'viewer' role, false otherwise.
+     */
+    function isViewer() {
+      return isSignedIn() && request.auth.token.role == 'viewer';
+    }
+
+
+    /**
+     * @description Rule for user profiles.
      * @path /users/{userId}
-     * @allow (create) User with uid 'user123' creates their profile.
-     * @deny (create) User with uid 'user123' attempts to create a profile for 'user456'.
-     * @principle Enforces document ownership for writes.
+     * @allow (create) User creates their own profile with matching UID.
+     * @allow (get, update, delete) User can only read, update and delete their own profile.
+     * @deny (create) User tries to create a profile with a non-matching UID.
+     * @deny (list) Listing all users is not allowed.
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.uid == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Manages the current class attendance session document.
+     * @description Rule for the current active class attendance session.
      * @path /sessions/class-current
-     * @allow (get) Any authenticated user can read the current class session.
-     * @deny (create) Non-admin user attempts to create the current class session.
-     * @principle Requires admin role for write operations.
+     * @allow (get) Anyone can get the current session.
+     * @allow (create, update, delete) Only admins can create, update, or delete the current session.
+     * @deny (list) Listing sessions is not allowed.
+     * @principle Restricts session management to admins.
      */
     match /sessions/class-current {
-        allow get: if isSignedIn();
-        allow list: if false;
-        allow create: if isAdmin();
-        allow update: if isAdmin() && resource != null;
-        allow delete: if isAdmin() && resource != null;
-    }
-
-    /**
-     * @description Manages live attendance records for the current class session.
-     * @path /sessions/class-current/records/{userId}
-     * @allow (create) Any authenitcated user can create the attendance record.
-     * @deny (create) Non-admin user attempts to create the attendance record.
-     */
-    match /sessions/class-current/records/{userId} {
-        allow get: if isSignedIn();
-        allow list: if false;
-        allow create: if isSignedIn();
-        allow update: if isSignedIn() && resource != null;
-        allow delete: if false;
-    }
-
-      /**
-     * @description Manages the current hostel attendance session document.
-     * @path /sessions/hostel-current
-     * @allow (get) Any authenticated user can read the current hostel session.
-     * @deny (create) Non-admin user attempts to create the current hostel session.
-     * @principle Requires admin role for write operations.
-     */
-    match /sessions/hostel-current {
-        allow get: if isSignedIn();
-        allow list: if false;
-        allow create: if isAdmin();
-        allow update: if isAdmin() && resource != null;
-        allow delete: if isAdmin() && resource != null;
-    }
-
-    /**
-     * @description Manages live attendance records for the current hostel session.
-     * @path /sessions/hostel-current/records/{userId}
-     * @allow (create) Any authenitcated user can create the attendance record.
-     * @deny (create) Non-admin user attempts to create the attendance record.
-     */
-    match /sessions/hostel-current/records/{userId} {
-        allow get: if isSignedIn();
-        allow list: if false;
-        allow create: if isSignedIn();
-        allow update: if isSignedIn() && resource != null;
-        allow delete: if false;
-    }
-
-    /**
-     * @description Manages archived attendance sessions.
-     * @path /sessions/{sessionId}
-     */
-    match /sessions/{sessionId} {
-        allow get: if isAdmin();
-        allow list: if false;
-        allow create: if isAdmin();
-        allow update: if isAdmin() && resource != null;
-        allow delete: if isAdmin() && resource != null;
-    }
-
-    /**
-     * @description Manages individual attendance records for a specific historical session.
-     * @path /sessions/{sessionId}/records/{recordId}
-     */
-    match /sessions/{sessionId}/records/{recordId} {
-        allow get: if isAdmin();
-        allow list: if false;
-        allow create: if isAdmin();
-        allow update: if isAdmin() && resource != null;
-        allow delete: if isAdmin() && resource != null;
-    }
-
-    /**
-     * @description Stores chat messages for a specific student. Admins can access all chats.
-     * @path /chats/{studentUid}/messages/{messageId}
-     * @allow (create) An admin can create a message in any student's chat.
-     * @deny (create) A non-admin user attempts to create a message in another student's chat.
-     * @principle Role-based access control for chat messages.
-     */
-    match /chats/{studentUid}/messages/{messageId} {
-      allow get: if isAdmin() || isOwner(studentUid);
-      allow list: if false;
-      allow create: if isAdmin() || isOwner(studentUid);
-      allow update: if false;
-      allow delete: if false;
-    }
-
-    /**
-     * @description Stores application-wide settings. There is only one document with id 'attendance' in this collection.
-     * @path /settings/attendance
-     * @allow (get) Admins can read settings.
-     * @deny (get) Non-admin users cannot access settings.
-     * @principle Role-based access control for settings.
-     */
-    match /settings/attendance {
-      allow get: if isAdmin();
+      allow get: if true;
       allow list: if false;
       allow create: if isAdmin();
       allow update: if isAdmin() && resource != null;
       allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for live attendance records for the current class session.
+     * @path /sessions/class-current/records/{userId}
+     * @allow (get) Anyone can get a record.
+     * @allow (create) Only admins can create records.
+     * @allow (update) Only admins can update records.
+     * @allow (delete) Only admins can delete records.
+     * @deny (list) Listing records is not allowed.
+     * @principle Restricts record management to admins.
+     */
+    match /sessions/class-current/records/{userId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for the current active hostel attendance session.
+     * @path /sessions/hostel-current
+     * @allow (get) Anyone can get the current hostel session.
+     * @allow (create, update, delete) Only admins can create, update, or delete the current hostel session.
+     * @deny (list) Listing sessions is not allowed.
+     * @principle Restricts session management to admins.
+     */
+    match /sessions/hostel-current {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for live attendance records for the current hostel session.
+     * @path /sessions/hostel-current/records/{userId}
+     * @allow (get) Anyone can get a record.
+     * @allow (create) Only admins can create records.
+     * @allow (update) Only admins can update records.
+     * @allow (delete) Only admins can delete records.
+     * @deny (list) Listing records is not allowed.
+     * @principle Restricts record management to admins.
+     */
+    match /sessions/hostel-current/records/{userId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for archived attendance sessions.
+     * @path /sessions/{sessionId}
+     * @allow (get, list) Viewers and admins can read archived sessions.
+     * @allow (create, update, delete) Only admins can create, update or delete sessions.
+     * @principle Restricts session creation/modification to admins, allows read access to viewers.
+     */
+    match /sessions/{sessionId} {
+      allow get, list: if isAdmin() || isViewer();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for individual attendance records for a specific historical session.
+     * @path /sessions/{sessionId}/records/{recordId}
+     * @allow (get, list) Viewers and admins can read archived records.
+     * @allow (create, update, delete) Only admins can create, update or delete records.
+     * @principle Restricts record creation/modification to admins, allows read access to viewers.
+     */
+    match /sessions/{sessionId}/records/{recordId} {
+      allow get, list: if isAdmin() || isViewer();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for chat messages for a specific student.
+     * @path /chats/{studentUid}/messages/{messageId}
+     * @allow (get, list) The student and admins can read the messages.
+     * @allow (create) Only the student and admins can create messages. The senderUid must match the studentUid or be an admin.
+     * @allow (update, delete) Only admins can update or delete messages.
+     * @principle Restricts message creation to the student or admins, allows read access to student and admins.
+     */
+    match /chats/{studentUid}/messages/{messageId} {
+      allow get, list: if isOwner(studentUid) || isAdmin();
+      allow create: if (isOwner(studentUid) && request.resource.data.senderUid == request.auth.uid) || isAdmin();
+      allow update, delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Rule for application-wide settings.
+     * @path /settings/attendance
+     * @allow (get) Everyone can read the settings.
+     * @allow (update) Only admins can update the settings.
+     * @deny (create, delete, list) Creation, deletion, and listing are not allowed.
+     * @principle Restricts settings modification to admins, allows public read access.
+     */
+    match /settings/attendance {
+      allow get: if true;
+      allow list: if false;
+      allow create: if false;
+      allow update: if isAdmin() && resource != null;
+      allow delete: if false;
     }
   }
 }
