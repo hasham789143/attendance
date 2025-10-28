@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -15,6 +16,7 @@ import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -22,6 +24,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
+  const [role, setRole] = useState<'viewer' | 'admin'>('viewer');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { auth, firestore } = useFirebase();
@@ -31,13 +34,12 @@ export default function RegisterPage() {
   const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'attendance') : null, [firestore]);
   const { data: settings, isLoading: settingsLoading } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
   
-  // Default to true. Registration is open unless explicitly closed by an admin.
   const isRegistrationOpen = settings?.isRegistrationOpen ?? true;
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!isRegistrationOpen && email.toLowerCase() !== 'admin@gmail.com') {
+    if (!isRegistrationOpen && role !== 'admin') {
         toast({
             variant: 'destructive',
             title: 'Registration Closed',
@@ -45,7 +47,7 @@ export default function RegisterPage() {
         });
         return;
     }
-    if (!name || !email || !password || !userType) {
+    if (!name || !email || !password || !userType || !role) {
       toast({
         variant: 'destructive',
         title: 'Missing Fields',
@@ -58,20 +60,20 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Assign 'admin' role if the email is 'admin@gmail.com', otherwise 'viewer'.
-      const role = email.toLowerCase() === 'admin@gmail.com' ? 'admin' : 'viewer';
-
       const userProfileData = {
         uid: user.uid,
         name,
         roll,
         email,
-        role: role, // Assign the correct role
+        role: role,
         userType,
       };
 
-      // Create user profile in Firestore using the non-blocking helper
       setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
+
+      if (role === 'admin') {
+        await setAdminClaim({ uid: user.uid });
+      }
       
       toast({ title: 'Registration Successful', description: 'Redirecting to your dashboard...'});
       router.push('/dashboard');
@@ -103,7 +105,7 @@ export default function RegisterPage() {
             <div className="flex justify-center items-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : !isRegistrationOpen && email.toLowerCase() !== 'admin@gmail.com' ? (
+          ) : !isRegistrationOpen && role !== 'admin' ? (
              <Alert variant="destructive">
                 <AlertTitle>Registration Closed</AlertTitle>
                 <AlertDescription>
@@ -175,6 +177,18 @@ export default function RegisterPage() {
                         <SelectItem value="student">Student (for Class)</SelectItem>
                         <SelectItem value="resident">Resident (for Hostel)</SelectItem>
                         <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                </Select>
+              </div>
+               <div className="space-y-2">
+                <Label htmlFor="role">System Role</Label>
+                <Select onValueChange={(v) => setRole(v as any)} value={role}>
+                    <SelectTrigger id="role">
+                        <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="viewer">User (Student/Resident)</SelectItem>
+                        <SelectItem value="admin">Administrator</SelectItem>
                     </SelectContent>
                 </Select>
               </div>
