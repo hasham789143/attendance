@@ -16,7 +16,6 @@ import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -26,7 +25,6 @@ export default function RegisterPage() {
   const [userType, setUserType] = useState<'student' | 'resident' | 'both'>('student');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const { auth, firestore } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
@@ -60,22 +58,24 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // New users get 'pending' role. Admins are created via admin panel now.
       const userProfileData = {
         uid: user.uid,
         name,
         roll,
         email,
-        role: 'pending', 
+        role: 'viewer', // New users are now viewers by default
         userType,
       };
 
       setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
       
-      // Sign the user out immediately after registration
-      await auth.signOut();
+      toast({
+        title: 'Registration Successful!',
+        description: 'You can now log in with your credentials.',
+      });
       
-      setIsSubmitted(true);
+      await auth.signOut();
+      router.push('/login');
 
     } catch (error: any) {
       console.error('Registration Error:', error);
@@ -90,28 +90,6 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
-
-  if (isSubmitted) {
-    return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-sm">
-                <CardHeader className="text-center">
-                    <Logo className="justify-center mb-2" />
-                    <CardTitle>Registration Submitted</CardTitle>
-                    <CardDescription>Your account is pending administrator approval.</CardDescription>
-                </CardHeader>
-                <CardContent className="text-center">
-                    <p className="text-muted-foreground mb-4">
-                        You will be able to log in once your account has been approved.
-                    </p>
-                    <Button asChild className="w-full">
-                        <Link href="/login">Return to Login</Link>
-                    </Button>
-                </CardContent>
-            </Card>
-        </div>
-    )
-  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">

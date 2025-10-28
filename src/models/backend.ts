@@ -13,7 +13,7 @@ export interface User {
     roll?: string;
     email: string;
     /** @enum {string} */
-    role: 'admin' | 'viewer' | 'disabled' | 'pending';
+    role: 'admin' | 'viewer' | 'disabled';
     /** @enum {string} */
     userType: 'student' | 'resident' | 'both';
 }

@@ -4,7 +4,7 @@ import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase'
 import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban, ThumbsUp, ThumbsDown, ShieldCheck } from 'lucide-react';
+import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban, ShieldCheck } from 'lucide-react';
 import { UserProfile, useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -43,7 +43,6 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { setRegistrationStatus } from '@/ai/flows/set-registration-status.flow';
 import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
     const [name, setName] = useState(user.name);
@@ -128,8 +127,6 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete, onPromote }: { use
                                 <Badge variant="default" className="bg-purple-600">Admin</Badge>
                             ) : user.role === 'disabled' ? (
                                 <Badge variant="destructive">Disabled</Badge>
-                            ) : user.role === 'pending' ? (
-                                <Badge variant="secondary" className="bg-yellow-500 text-black">Pending</Badge>
                             ) : (
                                 <Badge variant="default" className="bg-green-600">Active</Badge>
                             )}
@@ -147,7 +144,7 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete, onPromote }: { use
                                     <DropdownMenuItem onClick={() => onEdit(user)}>
                                         <Pen className="mr-2 h-4 w-4" /> Edit
                                     </DropdownMenuItem>
-                                    {user.role !== 'pending' && user.role !== 'admin' && (
+                                    {user.role !== 'admin' && (
                                         <DropdownMenuItem onClick={() => onToggleStatus(user)}>
                                             {user.role === 'disabled' ? <CheckCircle className="mr-2 h-4 w-4" /> : <Ban className="mr-2 h-4 w-4" />}
                                             {user.role === 'disabled' ? 'Enable' : 'Disable'}
@@ -170,41 +167,6 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete, onPromote }: { use
                 ))}
             </TableBody>
         </Table>
-    )
-}
-
-function ApprovalQueue({ users, onApprove, onDeny }: { users: UserProfile[], onApprove: (user: UserProfile) => void, onDeny: (user: UserProfile) => void }) {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Pending Approvals</CardTitle>
-                <CardDescription>Review and approve or deny new user registrations.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {users.length === 0 ? (
-                    <p className="text-muted-foreground">No users are currently pending approval.</p>
-                ) : (
-                    <div className="space-y-4">
-                        {users.map(user => (
-                            <div key={user.uid} className="flex items-center justify-between p-3 border rounded-lg">
-                                <div>
-                                    <p className="font-semibold">{user.name}</p>
-                                    <p className="text-sm text-muted-foreground">{user.email}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button size="sm" variant="destructive" onClick={() => onDeny(user)}>
-                                        <ThumbsDown className="mr-2 h-4 w-4" /> Deny
-                                    </Button>
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => onApprove(user)}>
-                                        <ThumbsUp className="mr-2 h-4 w-4" /> Approve
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </CardContent>
-        </Card>
     )
 }
 
@@ -231,13 +193,12 @@ export default function ResidentsPage() {
 
   const allUsersQuery = useMemoFirebase(() => {
     if (!firestore || userProfile?.role !== 'admin') return null;
-    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled', 'pending', 'admin']));
+    return query(collection(firestore, "users"), where('role', 'in', ['viewer', 'disabled', 'admin']));
   }, [firestore, userProfile]);
 
   const { data: allUsers, isLoading } = useCollection<UserProfile>(allUsersQuery);
   
-  const activeUsers = allUsers?.filter(u => u.role !== 'pending').sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
-  const pendingUsers = allUsers?.filter(u => u.role === 'pending') || [];
+  const activeUsers = allUsers?.sort((a, b) => (a.roll || '').localeCompare(b.roll || '')) || [];
 
   useEffect(() => {
       if (userProfile && userProfile.role !== 'admin') {
@@ -290,13 +251,6 @@ export default function ResidentsPage() {
         setIsUpdating(false);
     }
   }
-  
-  const handleApprove = async (user: UserProfile) => {
-      if(!firestore) return;
-      const userRef = doc(firestore, 'users', user.uid);
-      await updateDoc(userRef, { role: 'viewer' });
-      toast({ title: "User Approved", description: `${user.name} has been approved and can now log in.` });
-  }
 
   const handlePromote = async () => {
     if (!userToPromote || !firestore) return;
@@ -328,7 +282,6 @@ export default function ResidentsPage() {
      );
   }
 
-
   return (
     <div>
         <div className="flex items-center justify-between mb-4">
@@ -351,38 +304,21 @@ export default function ResidentsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         ) : (
-            <Tabs defaultValue="manage">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="manage">Manage Users</TabsTrigger>
-                    <TabsTrigger value="approve">
-                        Approve Users {pendingUsers.length > 0 && <Badge className="ml-2">{pendingUsers.length}</Badge>}
-                    </TabsTrigger>
-                </TabsList>
-                <TabsContent value="manage">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>All Active Users</CardTitle>
-                            <CardDescription>View, edit, and manage all user accounts.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                             <UserTable 
-                                users={activeUsers}
-                                onEdit={(user) => setUserToEdit(user)}
-                                onToggleStatus={(user) => setUserToToggleStatus(user)}
-                                onDelete={(user) => setUserToDelete(user)}
-                                onPromote={(user) => setUserToPromote(user)}
-                             />
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-                <TabsContent value="approve">
-                    <ApprovalQueue 
-                        users={pendingUsers}
-                        onApprove={handleApprove}
-                        onDeny={(user) => setUserToDelete(user)} // Denying will trigger delete confirmation
+          <Card>
+              <CardHeader>
+                  <CardTitle>All Users</CardTitle>
+                  <CardDescription>View, edit, and manage all user accounts.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                    <UserTable 
+                      users={activeUsers}
+                      onEdit={(user) => setUserToEdit(user)}
+                      onToggleStatus={(user) => setUserToToggleStatus(user)}
+                      onDelete={(user) => setUserToDelete(user)}
+                      onPromote={(user) => setUserToPromote(user)}
                     />
-                </TabsContent>
-            </Tabs>
+              </CardContent>
+          </Card>
         )}
         
         {userToEdit && (

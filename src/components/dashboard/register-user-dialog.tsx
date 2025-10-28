@@ -72,19 +72,11 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
     setLoading(true);
 
     try {
-      // We can't create a user without signing out the admin, which is bad UX.
-      // This part of the flow needs to be handled by a backend function that can create users.
-      // For now, we will simulate the creation and add the user to firestore with a pending status.
-      // This will require a temporary workaround on the backend.
-      // A better solution is a Cloud Function that handles user creation.
+      // NOTE: This flow has limitations in a client-only environment.
+      // createUserWithEmailAndPassword signs out the current admin.
+      // A more robust solution uses a serverless function (Firebase Function)
+      // to create users via the Admin SDK without affecting the admin's session.
       
-      // The Firebase Admin SDK can create users without this issue.
-      // Since we have admin flows, let's assume we create a 'pending' user document.
-      // The user would need to be created via a different mechanism.
-      // Let's assume for now this dialog only creates the Firestore record.
-      
-      // For a real implementation, you'd call a serverless function here.
-      // As a workaround for this dev environment, we'll create the user with a temporary auth workaround.
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const newUser = userCredential.user;
 
@@ -93,24 +85,19 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
         name,
         roll,
         email,
-        role: 'pending', // All users created by admin now start as pending
+        role: 'viewer', // New user is a viewer by default
         userType,
       };
 
       await setDocumentNonBlocking(doc(firestore, 'users', newUser.uid), userProfileData, { merge: false });
-      
-      // IMPORTANT: Sign the admin back in, as createUserWithEmailAndPassword signs them out.
-      if (auth.currentUser && auth.currentUser.email !== email) {
-        // This is tricky. For now, we'll just show the message.
-        // A proper solution requires a backend function.
-      }
-
 
       toast({
-        title: 'User Awaiting Approval',
-        description: `${name} has been created and is now available in the 'Approve Users' tab.`,
+        title: 'User Registered Successfully',
+        description: `${name} can now log in with the password you set.`,
       });
 
+      // The admin will be signed out here. This is a known limitation.
+      // They will need to log back in.
       resetForm();
       setOpen(false);
     } catch (error: any) {
@@ -136,7 +123,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
           <DialogHeader>
             <DialogTitle>Register New User</DialogTitle>
             <DialogDescription>
-              Create a new user account. All new accounts require approval.
+              Create a new user account. The user will be able to log in immediately.
             </DialogDescription>
           </DialogHeader>
 
@@ -205,7 +192,7 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
           <DialogFooter>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Pending User
+              Create User
             </Button>
           </DialogFooter>
         </form>

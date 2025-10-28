@@ -17,7 +17,7 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: 'admin' | 'viewer' | 'disabled' | 'pending';
+  role: 'admin' | 'viewer' | 'disabled';
   userType: 'student' | 'resident' | 'both';
   roll?: string;
   id: string; // Add id to match WithId<T>
@@ -58,9 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!loading && authUser && userProfileData) {
       if (userProfileData.role === 'disabled') {
         toast({ title: 'Account Disabled', description: 'Your account has been disabled by an administrator.', variant: 'destructive'});
-        logout();
-      } else if (userProfileData.role === 'pending') {
-        toast({ title: 'Account Pending', description: 'Your account is awaiting administrator approval.' });
         logout();
       }
     }
