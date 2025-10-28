@@ -71,8 +71,8 @@ export default function RegisterPage() {
       console.error('Registration Error:', error);
        if (error.code === 'auth/email-already-in-use') {
         setError('This email address is already in use. Please try logging in.');
-      } else if (error.code === 'auth/configuration-not-found') {
-        setError("Registration is not configured. Please enable Email/Password sign-in in your Firebase project's Authentication settings.");
+      } else if (error.code === 'auth/weak-password') {
+        setError('The password is too weak. It must be at least 6 characters long.');
       } else {
         setError(error.message || 'An unexpected error occurred during registration.');
       }
@@ -142,6 +142,7 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
                   required
+                  minLength={6}
                 />
               </div>
                <div className="space-y-2">
