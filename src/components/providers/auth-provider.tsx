@@ -8,6 +8,9 @@ import { doc, Firestore } from 'firebase/firestore';
 import { useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
+import { useToast } from '@/hooks/use-toast.tsx';
+
 
 // The shape of the user profile stored in Firestore
 export interface UserProfile {
@@ -32,6 +35,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { auth, firestore, user: authUser, isUserLoading: isAuthLoading } = useFirebase();
   const router = useRouter();
+  const { toast } = useToast();
 
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !authUser) return null;
@@ -42,6 +46,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   // The primary loading state is when auth is loading or when we have a user but are still fetching their profile.
   const loading = isAuthLoading || (!!authUser && isProfileLoading);
+
+  const [hasCheckedAdmin, setHasCheckedAdmin] = useState(false);
+
+  // Effect to grant admin role if necessary
+  useEffect(() => {
+    const checkAndGrantAdmin = async () => {
+      if (authUser && authUser.email === 'admin@gmail.com' && !hasCheckedAdmin) {
+        setHasCheckedAdmin(true); // Prevent re-running
+        const tokenResult = await authUser.getIdTokenResult();
+        
+        if (tokenResult.claims['role'] !== 'admin') {
+            try {
+                const result = await setAdminClaim({ uid: authUser.uid });
+                if (result.success) {
+                    toast({ title: "Admin Role Granted", description: "Privileges updated. The app will now reload." });
+                    // Force a reload to fetch the new token and apply permissions.
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            } catch (error: any) {
+                toast({ variant: 'destructive', title: 'Failed to Grant Admin Role', description: error.message });
+            }
+        }
+      }
+    };
+    checkAndGrantAdmin();
+  }, [authUser, hasCheckedAdmin, toast]);
+
 
   useEffect(() => {
     if (!loading && authUser && userProfileData?.role === 'disabled') {
