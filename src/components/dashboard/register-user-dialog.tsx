@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -73,11 +74,14 @@ export function RegisterUserDialog({ children }: { children: React.ReactNode }) 
             userType,
         };
 
-        setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, {});
+        setDocumentNonBlocking(doc(firestore, 'users', user.uid), userProfileData, { merge: false });
 
         // If the new user is an admin, set their custom claim
         if (role === 'admin') {
-            await setAdminClaim({ uid: user.uid });
+            const result = await setAdminClaim({ uid: user.uid });
+            if (!result.success) {
+                throw new Error("Failed to set admin claim for the new user.");
+            }
         }
 
 
