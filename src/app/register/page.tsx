@@ -10,12 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useFirebase } from '@/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getAuth } from "firebase-admin/auth";
+
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -43,32 +45,40 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
+      // Step 1: Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // Step 2: Create the user profile document in Firestore
       const userProfileData = {
         uid: user.uid,
         name,
         roll,
         email,
-        role: 'viewer', // New users are viewers by default
+        role: 'viewer', // All new users start as viewers
         userType,
       };
-
+      
       // CRITICAL: Await the setDoc to ensure the profile is created before continuing.
       await setDoc(doc(firestore, 'users', user.uid), userProfileData);
-      
+
+      // Step 3 (Optional but Recommended): Set custom claim for the user's role.
+      // This is a backend operation, so we would typically call a cloud function here.
+      // For this example, we assume a backend process or the first login of an admin
+      // will set the appropriate claims. New users are 'viewer' by default.
+
       toast({
         title: 'Registration Successful!',
         description: 'You can now log in with your credentials.',
       });
       
-      // Sign out the new user so the admin/current user remains logged in
-      // or to force the new user to log in themselves.
+      // Step 4: Sign out the new user so they are forced to log in,
+      // which ensures their auth state is clean.
       if (auth.currentUser) {
-        await auth.signOut();
+        await signOut(auth);
       }
       
+      // Step 5: Redirect to the login page.
       router.push('/login');
 
     } catch (error: any) {

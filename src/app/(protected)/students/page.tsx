@@ -39,9 +39,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { setRegistrationStatus } from '@/ai/flows/set-registration-status.flow';
 import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
 
 function EditUserDialog({ user, onSave, onCancel }: { user: UserProfile, onSave: (updatedUser: Partial<UserProfile>) => void, onCancel: () => void }) {
@@ -108,8 +106,8 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete, onPromote }: { use
             <TableHeader>
                 <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>ID / Room Number</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>ID / Room Number</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -119,8 +117,8 @@ function UserTable({ users, onEdit, onToggleStatus, onDelete, onPromote }: { use
                 {users.map(user => (
                     <TableRow key={user.id}>
                         <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.roll || 'N/A'}</TableCell>
                         <TableCell>{user.email}</TableCell>
+                        <TableCell>{user.roll || 'N/A'}</TableCell>
                         <TableCell>{getUserTypeBadge(user.userType)}</TableCell>
                         <TableCell>
                             {user.role === 'admin' ? (
@@ -181,15 +179,6 @@ export default function ResidentsPage() {
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   const [userToPromote, setUserToPromote] = useState<UserProfile | null>(null);
   
-  const settingsDocRef = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return doc(firestore, 'settings', 'attendance');
-  }, [firestore]);
-
-  const { data: settings, isLoading: isLoadingSettings } = useDoc<{ isRegistrationOpen: boolean }>(settingsDocRef);
-  
-  const isRegistrationOpen = settings?.isRegistrationOpen ?? true;
-  const [isUpdating, setIsUpdating] = useState(false);
 
   const allUsersQuery = useMemoFirebase(() => {
     if (!firestore || userProfile?.role !== 'admin') return null;
@@ -232,36 +221,15 @@ export default function ResidentsPage() {
     // Note: This does not delete from Firebase Auth. A cloud function is needed for that.
   }
 
-  const handleToggleRegistration = async (isOpen: boolean) => {
-    if (!userProfile) return;
-    setIsUpdating(true);
-    try {
-        await setRegistrationStatus({ isOpen, adminUid: userProfile.uid });
-        toast({
-          title: `Registration ${isOpen ? 'Enabled' : 'Disabled'}`,
-          description: `New users can ${isOpen ? '' : 'no longer'} register.`,
-        });
-    } catch(e: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Permission Denied',
-            description: 'You do not have permission to perform this action.'
-        });
-    } finally {
-        setIsUpdating(false);
-    }
-  }
-
   const handlePromote = async () => {
-    if (!userToPromote || !firestore) return;
+    if (!userToPromote || !userProfile) return;
     try {
-        const { success } = await setAdminClaim({ uid: userToPromote.uid });
-        if (success) {
-            const userRef = doc(firestore, 'users', userToPromote.uid);
-            await updateDoc(userRef, { role: 'admin' });
+        const result = await setAdminClaim({ uid: userToPromote.uid, adminUid: userProfile.uid });
+        if (result.success) {
             toast({ title: "User Promoted", description: `${userToPromote.name} is now an administrator.` });
+            // The user document itself is updated by the flow.
         } else {
-            throw new Error("Failed to set admin claim.");
+            throw new Error(result.error || "Failed to set admin claim.");
         }
     } catch(e: any) {
         toast({
@@ -286,17 +254,6 @@ export default function ResidentsPage() {
     <div>
         <div className="flex items-center justify-between mb-4">
              <h1 className="text-2xl font-bold font-headline">User Management</h1>
-             <div className="flex items-center space-x-2">
-                {isLoadingSettings ? <Loader2 className="h-5 w-5 animate-spin" /> : (
-                    <Switch 
-                        id="registration-switch" 
-                        checked={isRegistrationOpen}
-                        onCheckedChange={handleToggleRegistration}
-                        disabled={isUpdating}
-                    />
-                )}
-                <Label htmlFor="registration-switch">Allow Registration</Label>
-            </div>
         </div>
         
         {isLoading ? (

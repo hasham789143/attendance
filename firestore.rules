@@ -1,243 +1,152 @@
 /**
- * @fileoverview Firestore Security Rules for the attendance tracking system.
- *
- * Core Philosophy:
- * This ruleset enforces a role-based access control model, where 'admin' users have elevated privileges and 'viewer' users have read-only access.
- * Users can only manage their own profile data. Data validation is relaxed in this prototype phase.
+ * @file Firestore Security Rules
+ * @description This ruleset enforces a strict user-ownership model for user profiles and attendance records,
+ *              while also providing admin access and public read access where appropriate.
  *
  * Data Structure:
- * - /users/{userId}: Stores user profiles, with 'userId' matching the Firebase Auth UID.
- * - /sessions/class-current: Stores the currently active class attendance session (single document).
- * - /sessions/class-current/records/{userId}: Stores live attendance records for each student.
- * - /sessions/hostel-current: Stores the currently active hostel attendance session (single document).
- * - /sessions/hostel-current/records/{userId}: Stores live attendance records for each resident.
- * - /sessions/{sessionId}: Stores archived attendance sessions.
- * - /sessions/{sessionId}/records/{recordId}: Stores individual attendance records for historical sessions.
- * - /chats/{studentUid}/messages/{messageId}: Stores chat messages for a specific student.
- * - /settings/attendance: Stores application-wide settings (single document with ID 'attendance').
+ * - /users/{userId}: User profile information, accessible only by the user themselves and admins.
+ * - /sessions/class-current: The current active class attendance session.
+ * - /sessions/class-current/records/{userId}: Live attendance records for the active class session, accessible only by admins.
+ * - /sessions/hostel-current: The current active hostel attendance session.
+ * - /sessions/hostel-current/records/{userId}: Live attendance records for the active hostel session, accessible only by admins.
+ * - /sessions/{sessionId}: Archived attendance sessions, accessible only by admins.
+ * - /sessions/{sessionId}/records/{recordId}: Individual attendance records for historical sessions, accessible only by admins.
+ * - /chats/{studentUid}/messages/{messageId}: Chat messages for a specific student, accessible by the student and admins.
+ * - /settings/attendance: Application-wide settings, accessible only by admins.
  *
  * Key Security Decisions:
- * - Users can only read and write their own user profile.
- * - 'admin' users can create, update, and delete attendance sessions.
- * - 'viewer' users have read-only access to attendance sessions and records.
- * - Chat messages are scoped to individual students, with admins having access to all chats.
- * - The settings document is read-only for 'viewer' users and writable only by 'admin' users.
- *
- * Denormalization for Authorization:
- *  To simplify rules and avoid costly `get()` operations, the rules will rely on the `request.auth` context and
- *  explicit role checks. For example, verifying if a user is an 'admin' is done by checking `request.auth.token.role == 'admin'`.
- *
- * Structural Segregation:
- *  The application uses separate collections for current and archived attendance sessions, allowing for optimized
- *  queries and security rules.
+ * - User listing is explicitly denied.
+ * - Admin role is required for managing sessions, records and settings.
+ * - Chat messages are scoped to individual students, with admin oversight.
+ * - Current sessions and their associated records are separated from historical sessions for access control.
+ * - All write operations are protected by authorization checks, and non-existent documents cannot be updated or deleted.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile information. Users can only manage their own profile.
+     * @description Allows users to read and write their own profile data, and admins to manage all user data.
      * @path /users/{userId}
-     * @allow (create) User with UID 'user123' can create their own profile.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" } } }
-     * @allow (get) User with UID 'user123' can get their own profile.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (update) User with UID 'user123' can update their own profile.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "uid": "user123", "name": "Updated Name", "email": "test@example.com", "role": "viewer", "userType": "student" } } }
-     * @allow (list) User with UID 'user123' can list their own profile (this should not be possible, but is explicitly allowed).
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (delete) User with UID 'user123' can delete their own profile.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @deny (create) User with UID 'user456' attempts to create a profile for 'user123'.
-     *   Request: { "auth": { "uid": "user456" }, "resource": { "data": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" } } }
-     * @principle Enforces document ownership for user profiles.
+     * @allow (get, create, update, delete) if isSignedIn() && (isOwner(userId) || isAdmin())
+     * @deny (get, create, update, delete) if !isSignedIn()
+     * @principle Enforces document ownership for writes and requires authentication for all access.
      */
     match /users/{userId} {
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if isSignedIn() && isOwner(userId);
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if false; // Listing users is not allowed
+
       allow create: if isSignedIn() && isOwner(userId) && request.resource.data.uid == userId;
-      allow update: if isSignedIn() && isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
-      allow delete: if isSignedIn() && isExistingOwner(userId);
+      allow update: if isSignedIn() && (isOwner(userId) && resource.data.uid == request.resource.data.uid || isAdmin()) && resource != null;
+      allow delete: if isSignedIn() && (isOwner(userId) && resource.data.uid == userId || isAdmin()) && resource != null;
     }
 
     /**
-     * @description Controls access to the current class attendance session.
+     * @description Allows admins to manage the current class attendance session.
      * @path /sessions/class-current
-     * @allow (get) Any signed-in user can get the current class session.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (create) 'admin' can create the current class session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @allow (update) 'admin' can update the current class session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @allow (delete) 'admin' can delete the current class session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } } }
-     * @deny (create) 'viewer' attempts to create the current class session.
-     *   Request: { "auth": { "uid": "viewer456", "token": { "role": "viewer" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @principle Restricts write access to 'admin' users.
+     * @allow (get, create, update, delete) if isAdmin()
+     * @deny (get, create, update, delete) if !isAdmin()
+     * @principle Requires admin role for managing sessions.
      */
     match /sessions/class-current {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn() && isAdmin();
-      allow update: if isSignedIn() && isAdmin() && resource != null;
-      allow delete: if isSignedIn() && isAdmin() && resource != null;
-    }
+      allow get: if isAdmin();
+      allow list: if false; // Only a single document, listing is not applicable
 
-    /**
-     * @description Controls access to the live attendance records for the current class session.
-     * @path /sessions/class-current/records/{userId}
-     * @allow (get) Any signed-in user can get a record.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (create) Any signed-in user can create a record.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "present" } } }
-     * @allow (update) Any signed-in user can update a record.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "late" } } }
-     * @allow (delete) Any signed-in user can delete a record.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @principle Open access during the session.
-     */
-    match /sessions/class-current/records/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && resource != null;
-      allow delete: if isSignedIn() && resource != null;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+
+       match /records/{userId} {
+          allow get: if isAdmin();
+          allow list: if isAdmin();
+
+          allow create: if isAdmin();
+          allow update: if isAdmin() && resource != null;
+          allow delete: if isAdmin() && resource != null;
+        }
     }
 
         /**
-     * @description Controls access to the current hostel attendance session.
+     * @description Allows admins to manage the current hostel attendance session.
      * @path /sessions/hostel-current
-     * @allow (get) Any signed-in user can get the current hostel session.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (create) 'admin' can create the current hostel session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @allow (update) 'admin' can update the current hostel session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @allow (delete) 'admin' can delete the current hostel session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } } }
-     * @deny (create) 'viewer' attempts to create the current hostel session.
-     *   Request: { "auth": { "uid": "viewer456", "token": { "role": "viewer" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @principle Restricts write access to 'admin' users.
+     * @allow (get, create, update, delete) if isAdmin()
+     * @deny (get, create, update, delete) if !isAdmin()
+     * @principle Requires admin role for managing sessions.
      */
     match /sessions/hostel-current {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn() && isAdmin();
-      allow update: if isSignedIn() && isAdmin() && resource != null;
-      allow delete: if isSignedIn() && isAdmin() && resource != null;
+      allow get: if isAdmin();
+      allow list: if false; // Only a single document, listing is not applicable
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+
+       match /records/{userId} {
+          allow get: if isAdmin();
+          allow list: if isAdmin();
+
+          allow create: if isAdmin();
+          allow update: if isAdmin() && resource != null;
+          allow delete: if isAdmin() && resource != null;
+        }
     }
 
     /**
-     * @description Controls access to the live attendance records for the current hostel session.
-     * @path /sessions/hostel-current/records/{userId}
-     * @allow (get) Any signed-in user can get a record.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (create) Any signed-in user can create a record.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "present" } } }
-     * @allow (update) Any signed-in user can update a record.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "late" } } }
-     * @allow (delete) Any signed-in user can delete a record.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @principle Open access during the session.
-     */
-    match /sessions/hostel-current/records/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && resource != null;
-      allow delete: if isSignedIn() && resource != null;
-    }
-
-    /**
-     * @description Controls access to archived attendance sessions.
+     * @description Allows admins to manage archived attendance sessions.
      * @path /sessions/{sessionId}
-     * @allow (get) 'admin' or 'viewer' can get an archived session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } } }
-     * @allow (create) 'admin' can create an archived session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @allow (update) 'admin' can update an archived session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @allow (delete) 'admin' can delete an archived session.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } } }
-     * @deny (create) 'viewer' attempts to create an archived session.
-     *   Request: { "auth": { "uid": "viewer456", "token": { "role": "viewer" } }, "resource": { "data": { "key": "abc", "adminUid": "admin123", "createdAt": "2024-01-01T00:00:00Z", "lat": 0, "lng": 0, "radius": 100, "totalScans": 1, "currentScan": 1 } } }
-     * @principle Restricts write access to 'admin' users.
+     * @allow (get, create, update, delete) if isAdmin()
+     * @deny (get, create, update, delete) if !isAdmin()
+     * @principle Requires admin role for managing sessions.
      */
     match /sessions/{sessionId} {
-      allow get: if isSignedIn() && (isAdmin() || isViewer());
-      allow list: if false;
-      allow create: if isSignedIn() && isAdmin();
-      allow update: if isSignedIn() && isAdmin() && resource != null;
-      allow delete: if isSignedIn() && isAdmin() && resource != null;
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+
+      /**
+       * @description Allows admins to manage individual attendance records for a specific historical session.
+       * @path /sessions/{sessionId}/records/{recordId}
+       */
+      match /records/{recordId} {
+        allow get: if isAdmin();
+        allow list: if isAdmin();
+
+        allow create: if isAdmin();
+        allow update: if isAdmin() && resource != null;
+        allow delete: if isAdmin() && resource != null;
+      }
     }
 
     /**
-     * @description Controls access to individual attendance records for a specific historical session.
-     * @path /sessions/{sessionId}/records/{recordId}
-     * @allow (get) 'admin' or 'viewer' can get a record.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } } }
-     * @allow (create) 'admin' can create a record.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "present" } } }
-     * @allow (update) 'admin' can update a record.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "late" } } }
-     * @allow (delete) 'admin' can delete a record.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } } }
-     * @deny (create) 'viewer' attempts to create a record.
-     *   Request: { "auth": { "uid": "viewer456", "token": { "role": "viewer" } }, "resource": { "data": { "student": { "uid": "user123", "name": "Test User", "email": "test@example.com", "role": "viewer", "userType": "student" }, "scans": [], "finalStatus": "present" } } }
-     * @principle Restricts write access to 'admin' users.
-     */
-    match /sessions/{sessionId}/records/{recordId} {
-      allow get: if isSignedIn() && (isAdmin() || isViewer());
-      allow list: if isSignedIn() && (isAdmin() || isViewer());
-      allow create: if isSignedIn() && isAdmin();
-      allow update: if isSignedIn() && isAdmin() && resource != null;
-      allow delete: if isSignedIn() && isAdmin() && resource != null;
-    }
-
-    /**
-     * @description Controls access to chat messages for a specific student. Admins can access all chats.
+     * @description Allows students to read and write their own chat messages, and admins to manage all chat messages.
      * @path /chats/{studentUid}/messages/{messageId}
-     * @allow (get) User can get a chat message if they are the student or an admin.
-     *   Request: { "auth": { "uid": "user123" } } (where studentUid is 'user123')
-     * @allow (create) User can create a chat message if they are the student or an admin.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "text": "Hello", "senderUid": "user123", "senderName": "Test User", "senderRole": "viewer", "timestamp": "2024-01-01T00:00:00Z", "isRead": false } } }
-     * @allow (update) User can update a chat message if they are the student or an admin.
-     *   Request: { "auth": { "uid": "user123" }, "resource": { "data": { "text": "Hello", "senderUid": "user123", "senderName": "Test User", "senderRole": "viewer", "timestamp": "2024-01-01T00:00:00Z", "isRead": true } } }
-     * @allow (delete) User can delete a chat message if they are the student or an admin.
-     *   Request: { "auth": { "uid": "user123" } } (where studentUid is 'user123')
-     * @deny (create) User 'user456' attempts to create a chat message for student 'user123'.
-     *   Request: { "auth": { "uid": "user456" }, "resource": { "data": { "text": "Hello", "senderUid": "user456", "senderName": "Other User", "senderRole": "viewer", "timestamp": "2024-01-01T00:00:00Z", "isRead": false } } } (where studentUid is 'user123')
-     * @principle Restricts access to chat messages to the student and admins.
      */
     match /chats/{studentUid}/messages/{messageId} {
       allow get: if isSignedIn() && (isOwner(studentUid) || isAdmin());
       allow list: if isSignedIn() && (isOwner(studentUid) || isAdmin());
-      allow create: if isSignedIn() && (isOwner(studentUid) || isAdmin());
+
+      allow create: if isSignedIn() && (request.resource.data.senderUid == request.auth.uid && isOwner(studentUid) || isAdmin());
       allow update: if isSignedIn() && (isOwner(studentUid) || isAdmin()) && resource != null;
-      allow delete: if isSignedIn() && (isOwner(studentUid) || isAdmin()) && resource != null;
+      allow delete: if isSignedIn() && isAdmin() && resource != null; // Only admins can delete messages
     }
 
     /**
-     * @description Controls access to application-wide settings. 'admin' users can modify settings, 'viewer' users can only read.
+     * @description Allows admins to manage application-wide settings.
      * @path /settings/attendance
-     * @allow (get) Any signed-in user can get the attendance settings.
-     *   Request: { "auth": { "uid": "user123" } }
-     * @allow (create) 'admin' can create the attendance settings.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "isSelfieRequired": true, "isRegistrationOpen": true } } }
-     * @allow (update) 'admin' can update the attendance settings.
-     *   Request: { "auth": { "uid": "admin123", "token": { "role": "admin" } }, "resource": { "data": { "isSelfieRequired": false, "isRegistrationOpen": true } } }
-     * @deny (create) 'viewer' attempts to create the attendance settings.
-     *   Request: { "auth": { "uid": "viewer456", "token": { "role": "viewer" } }, "resource": { "data": { "isSelfieRequired": true, "isRegistrationOpen": true } } }
-     * @principle Restricts write access to application settings to 'admin' users.
      */
     match /settings/attendance {
-       allow get: if isSignedIn();
-       allow list: if false;
-       allow create: if isSignedIn() && isAdmin();
-       allow update: if isSignedIn() && isAdmin() && resource != null;
-       allow delete: if isSignedIn() && isAdmin() && resource != null;
+      allow get: if isAdmin();
+      allow list: if false; // Only a single document, listing is not applicable
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
     }
-  }
+
+   }
 
   // Helper functions
   function isSignedIn() {
@@ -248,15 +157,7 @@ service cloud.firestore {
     return request.auth.uid == userId;
   }
 
-  function isExistingOwner(userId) {
-    return isOwner(userId) && resource != null;
-  }
-
   function isAdmin() {
-    return isSignedIn() && request.auth.token.role == 'admin';
-  }
-
-    function isViewer() {
-    return isSignedIn() && request.auth.token.role == 'viewer';
+    return request.auth.token.role == 'admin';
   }
 }

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
@@ -60,13 +60,13 @@ export default function LoginPage() {
     }
     setElevationLoading(true);
     try {
-        const result = await setAdminClaim({ uid: user.uid });
+        const result = await setAdminClaim({ uid: user.uid, adminUid: user.uid });
         if (result.success) {
             toast({ title: "Privileges Elevated", description: "Admin role granted. The app will now reload to apply changes." });
             // Force a reload to fetch the new token with the admin claim.
             setTimeout(() => window.location.reload(), 2000);
         } else {
-             throw new Error("The elevation process did not complete successfully.");
+             throw new Error(result.error || "The elevation process did not complete successfully.");
         }
     } catch (error: any) {
         toast({ variant: 'destructive', title: 'Failed to Grant Admin Role', description: error.message });
