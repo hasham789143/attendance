@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -14,6 +13,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { setAdminClaim } from '@/ai/flows/set-admin-claim.flow';
+import { useAuth } from '@/components/providers/auth-provider';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -22,7 +22,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [elevationLoading, setElevationLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { auth, user } = useFirebase();
+  const { auth } = useFirebase();
+  const { user, userProfile } = useAuth(); // Use the hook that provides both
   const { toast } = useToast();
   const router = useRouter();
 
@@ -84,8 +85,8 @@ export default function LoginPage() {
     if (error) setError(null);
   }
 
-  // Show the elevation button only if the currently logged-in user's email is admin@gmail.com
-  const showElevationButton = user && user.email === 'admin@gmail.com';
+  // Show the elevation button only if the currently logged-in user's email is admin@gmail.com AND they don't already have the admin role.
+  const showElevationButton = user && user.email === 'admin@gmail.com' && userProfile?.role !== 'admin';
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -172,5 +173,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    

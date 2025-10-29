@@ -1,7 +1,6 @@
-
 'use client';
-import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, MoreHorizontal, Pen, Trash2, CheckCircle, Ban, ShieldCheck } from 'lucide-react';
@@ -214,11 +213,13 @@ export default function ResidentsPage() {
   
   const handleDeleteUser = async (userToDelete: UserProfile) => {
     if (!firestore || !userToDelete) return;
+    // This action is destructive and not recommended.
+    // We only delete the Firestore document, not the auth user.
+    // A more robust solution would use a Cloud Function to delete both.
     const userRef = doc(firestore, 'users', userToDelete.uid);
     await deleteDoc(userRef);
-    toast({ title: "User Deleted", description: `${userToDelete.name} has been removed from Firestore.` });
+    toast({ title: "User Profile Deleted", description: `${userToDelete.name} has been removed from Firestore.` });
     setUserToDelete(null);
-    // Note: This does not delete from Firebase Auth. A cloud function is needed for that.
   }
 
   const handlePromote = async () => {
@@ -227,7 +228,7 @@ export default function ResidentsPage() {
         const result = await setAdminClaim({ uid: userToPromote.uid, adminUid: userProfile.uid });
         if (result.success) {
             toast({ title: "User Promoted", description: `${userToPromote.name} is now an administrator.` });
-            // The user document itself is updated by the flow.
+            // The user document itself is updated by the flow. The local state will refresh on next render.
         } else {
             throw new Error(result.error || "Failed to set admin claim.");
         }
@@ -328,7 +329,7 @@ export default function ResidentsPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Promote to Administrator?</AlertDialogTitle>
                     <AlertDialogDescription>
-                       Are you sure you want to grant administrator privileges to {userToPromote.name}? They will have full access to manage users and sessions. This action cannot be easily undone.
+                       Are you sure you want to grant administrator privileges to {userToPromote.name}? They will have full access to manage users and sessions. This action requires the user to log out and log back in to take effect.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -342,5 +343,3 @@ export default function ResidentsPage() {
     </div>
   );
 }
-
-    
