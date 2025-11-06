@@ -82,8 +82,9 @@ function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
     
     const usersQuery = useMemoFirebase(() => {
-        // CRITICAL FIX: Do not run the query until the userProfile is loaded.
-        if (!firestore || !userProfile) return null;
+        if (!firestore || !userProfile) {
+          return null; // Do not query if userProfile is not loaded
+        }
         
         const baseQuery = collection(firestore, 'users');
         
@@ -735,7 +736,3 @@ export const useStore = () => {
   }
   return context;
 };
-
-    
-
-    
