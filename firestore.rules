@@ -11,7 +11,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if the user is an admin.
+     * @description Checks if the user is an admin based on custom claims.
      * @path N/A
      */
     function isAdmin() {
@@ -19,15 +19,8 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if the user is a viewer.
-     * @path N/A
-     */
-    function isViewer() {
-      return isSignedIn() && request.auth.token.role == 'viewer';
-    }
-
-    /**
      * @description Checks if the authenticated user's UID matches the requested user ID.
+     * @param userId The UID to check against.
      * @path N/A
      */
     function isOwner(userId) {
@@ -35,21 +28,8 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if the authenticated user's UID matches the requested user ID and the resource exists
-     * @path N/A
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
      * @description Stores user profile information. The 'userId' is the Firebase Authentication UID.
      * @path /users/{userId}
-     * @allow (create) User with UID 'user123' creates their profile. request.auth.uid == 'user123'
-     * @allow (get) User with UID 'user123' reads their profile. request.auth.uid == 'user123'
-     * @allow (update) Admin updates user profile. request.auth.token.role == 'admin'
-     * @deny (create) User with UID 'user456' tries to create profile for 'user123'. request.auth.uid == 'user456', userId == 'user123'
-     * @principle Enforces document ownership for writes, admin override.
      */
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
@@ -61,126 +41,80 @@ service cloud.firestore {
     /**
      * @description Stores the current active class attendance session. This is a single document.
      * @path /sessions/class-current
-     * @allow (get) Any authenticated user can get the current class session
-     * @allow (create) Admin creates the current class session. request.auth.token.role == 'admin'
-     * @allow (update) Admin updates the current class session. request.auth.token.role == 'admin'
-     * @deny (create) Viewer attempts to create the current class session. request.auth.token.role == 'viewer'
-     * @principle Enforces admin-only writes.
      */
     match /sessions/class-current {
       allow get: if isSignedIn();
-      allow list: if false;
+      allow list: if false; // Should only ever be a 'get'
       allow create, update, delete: if isAdmin();
     }
 
     /**
      * @description Stores the live attendance records for each student in the currently active class session.
      * @path /sessions/class-current/records/{userId}
-     * @allow (get) Admin gets a specific user's record. request.auth.token.role == 'admin'
-     * @allow (create) Viewer or Admin creates a new attendance record.
-     * @allow (update) Viewer or Admin updates a user's attendance record.
-     * @principle Enforces admin-only writes.
      */
     match /sessions/class-current/records/{userId} {
       allow get: if isAdmin() || isOwner(userId);
       allow list: if isAdmin();
-      allow create: if isAdmin() || isOwner(userId);
-      allow update: if isAdmin() || isOwner(userId);
+      allow create, update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
     }
 
      /**
      * @description Stores the current active hostel attendance session. This is a single document.
      * @path /sessions/hostel-current
-     * @allow (get) Any authenticated user can get the current hostel session
-     * @allow (create) Admin creates the current hostel session. request.auth.token.role == 'admin'
-     * @allow (update) Admin updates the current hostel session. request.auth.token.role == 'admin'
-     * @deny (create) Viewer attempts to create the current hostel session. request.auth.token.role == 'viewer'
-     * @principle Enforces admin-only writes.
      */
     match /sessions/hostel-current {
       allow get: if isSignedIn();
-      allow list: if false;
+      allow list: if false; // Should only ever be a 'get'
       allow create, update, delete: if isAdmin();
     }
 
     /**
      * @description Stores the live attendance records for each resident in the currently active hostel session.
      * @path /sessions/hostel-current/records/{userId}
-     * @allow (get) Admin gets a specific user's record. request.auth.token.role == 'admin'
-     * @allow (create) Admin creates a new attendance record. request.auth.token.role == 'admin'
-     * @allow (update) Admin updates a user's attendance record. request.auth.token.role == 'admin'
-     * @deny (create) Viewer attempts to create attendance record. request.auth.token.role == 'viewer'
-     * @principle Enforces admin-only writes.
      */
     match /sessions/hostel-current/records/{userId} {
       allow get: if isAdmin() || isOwner(userId);
       allow list: if isAdmin();
-      allow create: if isAdmin() || isOwner(userId);
-      allow update: if isAdmin() || isOwner(userId);
+      allow create, update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
     }
 
     /**
-     * @description Stores an archived attendance session.
+     * @description Stores an archived attendance session. Admins only.
      * @path /sessions/{sessionId}
-     * @allow (get) Admin can get an archived attendance session. request.auth.token.role == 'admin'
-     * @allow (create) Admin can create an archived attendance session. request.auth.token.role == 'admin'
-     * @allow (update) Admin can update an archived attendance session. request.auth.token.role == 'admin'
-     * @deny (create) Viewer attempts to create an archived session. request.auth.token.role == 'viewer'
-     * @principle Enforces admin-only writes.
      */
     match /sessions/{sessionId} {
-      allow get: if isAdmin();
-      allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     /**
-     * @description Stores individual attendance records for a specific historical session.
+     * @description Stores individual attendance records for a specific historical session. Admins only.
      * @path /sessions/{sessionId}/records/{recordId}
-     * @allow (get) Admin gets a specific record. request.auth.token.role == 'admin'
-     * @allow (create) Admin creates a new historical record. request.auth.token.role == 'admin'
-     * @allow (update) Admin updates a historical record. request.auth.token.role == 'admin'
-     * @deny (create) Viewer attempts to create a historical record. request.auth.token.role == 'viewer'
-     * @principle Enforces admin-only writes.
      */
     match /sessions/{sessionId}/records/{recordId} {
-      allow get: if isAdmin();
-      allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+        allow read, write: if isAdmin();
     }
 
     /**
-     * @description Stores chat messages for a specific student. Admins can access all chats.
+     * @description Stores chat messages. Admins can access all chats, students can access their own.
      * @path /chats/{studentUid}/messages/{messageId}
-     * @allow (get) Admin or the student can read the message. request.auth.token.role == 'admin' || request.auth.uid == studentUid
-     * @allow (create) Admin or the student can create a message. request.auth.token.role == 'admin' || request.auth.uid == studentUid
-     * @deny (create) Other student attempts to create a message in this chat. request.auth.uid != studentUid
-     * @principle Shared access: Admin and student can read and write.
      */
     match /chats/{studentUid}/messages/{messageId} {
       allow get: if isAdmin() || isOwner(studentUid);
       allow list: if isAdmin() || isOwner(studentUid);
       allow create: if isAdmin() || isOwner(studentUid);
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     /**
-     * @description Stores application-wide settings. There is only one document with id 'attendance' in this collection.
+     * @description Stores application-wide settings.
      * @path /settings/attendance
-     * @allow (get) Any authenticated user can read the settings
-     * @allow (update) Only admins can update the settings. request.auth.token.role == 'admin'
-     * @deny (update) Viewer attempts to update the settings. request.auth.token.role == 'viewer'
-     * @principle Admin-only writes for global settings.
      */
     match /settings/attendance {
       allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isAdmin();
-      allow update, delete: if isAdmin();
+      allow list: if false; // Only one document, so no list needed.
+      allow write: if isAdmin();
     }
   }
 }
-    
