@@ -81,17 +81,16 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
 
-    // This query is for ADMINS ONLY, to fetch all active users.
+    // For ADMINS: Fetch all active users.
     const allUsersQuery = useMemoFirebase(() => {
-        if (!firestore || userProfile?.role !== 'admin') {
+        if (!firestore || !userProfile || userProfile.role !== 'admin') {
             return null;
         }
         return query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'admin']));
-    }, [firestore, userProfile?.role]); // Depends on the role to re-evaluate.
+    }, [firestore, userProfile]);
 
     const { data: allUsersForAdmin, isLoading: isAdminLoading } = useCollection<UserProfile>(allUsersQuery);
 
-    // This state holds the final list of users. For admins, it's the whole list. For viewers, it's just themselves.
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -101,15 +100,14 @@ function useUsers(userProfile: UserProfile | null) {
             return;
         }
         
-        // If the user is an admin, we wait for the main query to finish.
         if (userProfile.role === 'admin') {
+            // Admin's user list is derived from the collection query
             if (!isAdminLoading) {
                 setUsers(allUsersForAdmin || []);
                 setIsLoading(false);
             }
-        } 
-        // If the user is a viewer, we fetch ONLY their own document.
-        else if (userProfile.role === 'viewer') {
+        } else if (userProfile.role === 'viewer') {
+            // Viewer fetches ONLY their own document. This avoids permission errors.
             setIsLoading(true);
             const userDocRef = doc(firestore, 'users', userProfile.uid);
             getDoc(userDocRef).then(docSnap => {
@@ -119,10 +117,14 @@ function useUsers(userProfile: UserProfile | null) {
                     setUsers([]); // Should not happen if they are logged in.
                 }
                 setIsLoading(false);
-            }).catch(() => {
-                 // Handle potential error fetching own doc
-                setIsLoading(false);
+            }).catch((error) => {
+                 console.error("Error fetching own user document:", error);
+                 setIsLoading(false);
             });
+        } else {
+            // For other roles or if profile is not loaded, keep loading state.
+             setIsLoading(false);
+             setUsers([]);
         }
 
     }, [userProfile, firestore, isAdminLoading, allUsersForAdmin]);
