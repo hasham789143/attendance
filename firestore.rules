@@ -102,8 +102,9 @@ service cloud.firestore {
      * @path /chats/{studentUid}/messages/{messageId}
      */
     match /chats/{studentUid}/messages/{messageId} {
-      allow get, write: if isAdmin() || isOwner(studentUid);
-      allow list: if isAdmin() || isOwner(studentUid);
+      allow get: if isOwner(studentUid) || isAdmin();
+      allow list: if isOwner(studentUid) || isAdmin();
+      allow write: if isOwner(studentUid) || isAdmin();
     }
 
     /**
