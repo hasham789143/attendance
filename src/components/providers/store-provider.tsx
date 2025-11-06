@@ -86,13 +86,13 @@ function useUsers(userProfile: UserProfile | null) {
         
         const baseQuery = collection(firestore, 'users');
         
-        // For non-admins, only fetch their own profile.
-        if (userProfile?.role !== 'admin') {
+        if (userProfile.role !== 'admin') {
+           // For non-admins, only fetch their own profile.
            return query(baseQuery, where('uid', '==', userProfile.uid));
         }
         
-        // For admins, fetch all users.
-        return query(baseQuery, where('role', 'in', ['viewer', 'admin', 'disabled']));
+        // For admins, fetch all users who are not disabled.
+        return query(baseQuery, where('role', 'in', ['viewer', 'admin']));
 
     }, [firestore, userProfile]);
 
@@ -734,5 +734,7 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
 
     
