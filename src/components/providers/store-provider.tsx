@@ -82,8 +82,9 @@ function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
     
     const usersQuery = useMemoFirebase(() => {
-        if (!firestore || !userProfile) {
-          return null; // Do not query if userProfile is not loaded
+        // Do not query if firestore is not ready or the user's role is not yet known.
+        if (!firestore || !userProfile?.role) {
+          return null;
         }
         
         const baseQuery = collection(firestore, 'users');
@@ -96,7 +97,7 @@ function useUsers(userProfile: UserProfile | null) {
         // For non-admins, only fetch their own profile.
         return query(baseQuery, where('uid', '==', userProfile.uid));
 
-    }, [firestore, userProfile]);
+    }, [firestore, userProfile?.role]); // Depend on userProfile.role to re-evaluate when it's available
 
     const { data: users, isLoading } = useCollection<UserProfile>(usersQuery);
 
