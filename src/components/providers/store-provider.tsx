@@ -83,55 +83,49 @@ function useUsers(userProfile: UserProfile | null) {
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // This query is ONLY for admins.
     const adminUsersQuery = useMemoFirebase(() => {
         if (!firestore || !userProfile || userProfile.role !== 'admin') {
             return null;
         }
         return query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'admin']));
-    }, [firestore, userProfile]);
+    }, [firestore, userProfile?.role]);
 
     const { data: adminFetchedUsers, isLoading: isAdminLoading } = useCollection<UserProfile>(adminUsersQuery);
 
     useEffect(() => {
-        // We can't do anything until the user profile is loaded.
         if (!userProfile || !firestore) {
             setIsLoading(true);
             return;
         }
-
+        
+        setIsLoading(true);
         if (userProfile.role === 'admin') {
-            // Admin logic: use the result of the collection query.
             if (!isAdminLoading) {
                 setUsers(adminFetchedUsers || []);
                 setIsLoading(false);
             }
         } else if (userProfile.role === 'viewer') {
-            // Viewer logic: fetch only their own document to avoid permission errors.
-            setIsLoading(true);
             const userDocRef = doc(firestore, 'users', userProfile.uid);
             getDoc(userDocRef).then(docSnap => {
                 if (docSnap.exists()) {
                     setUsers([{ id: docSnap.id, ...docSnap.data() } as UserProfile]);
                 } else {
-                    // This is an inconsistent state, but we handle it gracefully.
                     setUsers([]);
                 }
             }).catch(error => {
                 console.error("Error fetching own user document:", error);
-                setUsers([]); // Clear users on error
+                setUsers([]);
             }).finally(() => {
                 setIsLoading(false);
             });
         } else {
-            // For disabled users or other cases, the user list is empty.
             setUsers([]);
             setIsLoading(false);
         }
 
     }, [userProfile, firestore, adminFetchedUsers, isAdminLoading]);
 
-    return { users: users, isLoading };
+    return { users, isLoading };
 }
 
 

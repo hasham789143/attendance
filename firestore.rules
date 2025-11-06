@@ -36,7 +36,9 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId);
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin();
+      // Deleting users should be a privileged, server-side operation.
+      allow delete: if false; 
     }
 
     /**
@@ -102,7 +104,7 @@ service cloud.firestore {
      * @path /chats/{studentUid}/messages/{messageId}
      */
     match /chats/{studentUid}/messages/{messageId} {
-      allow read, write: if isOwner(studentUid) || isAdmin();
+      allow read, create, update: if isOwner(studentUid) || isAdmin();
       allow list: if isOwner(studentUid) || isAdmin();
     }
 
