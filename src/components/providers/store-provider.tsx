@@ -82,17 +82,18 @@ function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
     
     const usersQuery = useMemoFirebase(() => {
+        // CRITICAL FIX: Do not run the query until the userProfile is loaded.
         if (!firestore || !userProfile) return null;
         
         const baseQuery = collection(firestore, 'users');
         
-        if (userProfile.role !== 'admin') {
-           // For non-admins, only fetch their own profile.
-           return query(baseQuery, where('uid', '==', userProfile.uid));
+        if (userProfile.role === 'admin') {
+           // For admins, fetch all users who are not disabled.
+           return query(baseQuery, where('role', 'in', ['viewer', 'admin']));
         }
         
-        // For admins, fetch all users who are not disabled.
-        return query(baseQuery, where('role', 'in', ['viewer', 'admin']));
+        // For non-admins, only fetch their own profile.
+        return query(baseQuery, where('uid', '==', userProfile.uid));
 
     }, [firestore, userProfile]);
 
