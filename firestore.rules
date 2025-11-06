@@ -103,6 +103,7 @@ service cloud.firestore {
      */
     match /chats/{studentUid}/messages/{messageId} {
       allow read, write: if isOwner(studentUid) || isAdmin();
+      allow list: if isOwner(studentUid) || isAdmin();
     }
 
     /**
@@ -116,5 +117,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
