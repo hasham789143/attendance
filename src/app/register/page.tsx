@@ -16,7 +16,6 @@ import { useToast } from '@/hooks/use-toast.tsx';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAuth } from "firebase-admin/auth";
 
 
 export default function RegisterPage() {
