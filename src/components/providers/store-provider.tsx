@@ -80,55 +80,56 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
+    const [users, setUsers] = useState<UserProfile[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // For ADMINS: Fetch all active users.
-    const allUsersQuery = useMemoFirebase(() => {
+    // This query is ONLY for admins.
+    const adminUsersQuery = useMemoFirebase(() => {
         if (!firestore || !userProfile || userProfile.role !== 'admin') {
             return null;
         }
         return query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'admin']));
     }, [firestore, userProfile]);
 
-    const { data: allUsersForAdmin, isLoading: isAdminLoading } = useCollection<UserProfile>(allUsersQuery);
-
-    const [users, setUsers] = useState<UserProfile[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { data: adminFetchedUsers, isLoading: isAdminLoading } = useCollection<UserProfile>(adminUsersQuery);
 
     useEffect(() => {
+        // We can't do anything until the user profile is loaded.
         if (!userProfile || !firestore) {
             setIsLoading(true);
             return;
         }
-        
+
         if (userProfile.role === 'admin') {
-            // Admin's user list is derived from the collection query
+            // Admin logic: use the result of the collection query.
             if (!isAdminLoading) {
-                setUsers(allUsersForAdmin || []);
+                setUsers(adminFetchedUsers || []);
                 setIsLoading(false);
             }
         } else if (userProfile.role === 'viewer') {
-            // Viewer fetches ONLY their own document. This avoids permission errors.
+            // Viewer logic: fetch only their own document to avoid permission errors.
             setIsLoading(true);
             const userDocRef = doc(firestore, 'users', userProfile.uid);
             getDoc(userDocRef).then(docSnap => {
                 if (docSnap.exists()) {
                     setUsers([{ id: docSnap.id, ...docSnap.data() } as UserProfile]);
                 } else {
-                    setUsers([]); // Should not happen if they are logged in.
+                    // This is an inconsistent state, but we handle it gracefully.
+                    setUsers([]);
                 }
+            }).catch(error => {
+                console.error("Error fetching own user document:", error);
+                setUsers([]); // Clear users on error
+            }).finally(() => {
                 setIsLoading(false);
-            }).catch((error) => {
-                 console.error("Error fetching own user document:", error);
-                 setIsLoading(false);
             });
         } else {
-            // For other roles or if profile is not loaded, keep loading state.
-             setIsLoading(false);
-             setUsers([]);
+            // For disabled users or other cases, the user list is empty.
+            setUsers([]);
+            setIsLoading(false);
         }
 
-    }, [userProfile, firestore, isAdminLoading, allUsersForAdmin]);
-
+    }, [userProfile, firestore, adminFetchedUsers, isAdminLoading]);
 
     return { users: users, isLoading };
 }
@@ -766,3 +767,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
