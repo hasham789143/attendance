@@ -81,19 +81,18 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 function useUsers(userProfile: UserProfile | null) {
     const { firestore } = useFirebase();
     
-    // This query is now stable for admins, it doesn't depend on attendanceMode.
     const usersQuery = useMemoFirebase(() => {
         if (!firestore || !userProfile) return null;
         
-        const baseQuery = query(collection(firestore, 'users'), where('role', 'in', ['viewer', 'disabled']));
+        const baseQuery = collection(firestore, 'users');
         
-        // For students/residents, only fetch their own profile.
+        // For non-admins, only fetch their own profile.
         if (userProfile?.role !== 'admin') {
            return query(baseQuery, where('uid', '==', userProfile.uid));
         }
         
-        // For admins, fetch all user types they might manage.
-        return query(baseQuery, where('userType', 'in', ['student', 'resident', 'both']));
+        // For admins, fetch all users.
+        return query(baseQuery, where('role', 'in', ['viewer', 'admin', 'disabled']));
 
     }, [firestore, userProfile]);
 
@@ -735,3 +734,5 @@ export const useStore = () => {
   }
   return context;
 };
+
+    
