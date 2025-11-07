@@ -7,8 +7,6 @@ import { useStore } from './store-provider';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, onSnapshot, writeBatch, getDocs, Query, DocumentData } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast.tsx';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 type UnreadCounts = {
     [studentUid: string]: number;
@@ -66,17 +64,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 }
             },
             (error) => {
-                // For a student, a failed subscription is a critical error.
-                // For an admin, it might just mean one of many chats is inaccessible.
-                if (isOwnChat) {
-                    const contextualError = new FirestorePermissionError({
-                        path: `chats/${chatOwnerUid}/messages`,
-                        operation: 'list',
-                    });
-                    errorEmitter.emit('permission-error', contextualError);
-                } else {
-                     console.error(`Admin could not subscribe to chat for student ${chatOwnerUid}:`, error.message);
-                }
+                console.error(`Error subscribing to chat for ${chatOwnerUid}:`, error.message);
             });
             unsubscribes.push(unsubscribe);
         };

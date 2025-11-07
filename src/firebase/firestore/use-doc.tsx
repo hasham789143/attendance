@@ -69,9 +69,10 @@ export function useDoc<T = any>(
         setError(null); // Clear any previous error on successful snapshot (even if doc doesn't exist)
         setIsLoading(false);
       },
-      (error: FirestoreError) => {
-        console.error("useDoc Firestore Error:", error);
-        setError(error);
+      (err: FirestoreError) => {
+        // Log the error instead of throwing it
+        console.error("useDoc Firestore Error:", err);
+        setError(err);
         setData(null);
         setIsLoading(false);
       }
