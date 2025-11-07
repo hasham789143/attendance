@@ -37,37 +37,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         const setupSubscription = (chatOwnerUid: string, isOwnChat: boolean) => {
              const messagesRef = collection(firestore, 'chats', chatOwnerUid, 'messages');
+             // Query only for unread messages to avoid needing a composite index.
+             // We will filter by sender on the client side.
              const q = query(messagesRef, where('isRead', '==', false));
 
 
             const unsubscribe = onSnapshot(q, snapshot => {
-                let unreadCount = 0;
                 const newMessages = snapshot.docChanges().filter(change => change.type === 'added').map(change => change.doc.data());
-
-                snapshot.forEach(doc => {
+                
+                // Client-side filtering for sender
+                const relevantDocs = snapshot.docs.filter(doc => {
                     const message = doc.data();
-                    if (isOwnChat) {
-                        // A user looking at their own chat only counts messages from others
-                        if (message.senderUid !== userProfile.uid) {
-                            unreadCount++;
-                        }
+                     if (isOwnChat) {
+                        return message.senderUid !== userProfile.uid;
                     } else {
-                        // An admin looking at a student's chat only counts messages from that student
-                        if (message.senderUid === chatOwnerUid) {
-                            unreadCount++;
-                        }
+                        return message.senderUid === chatOwnerUid;
                     }
                 });
 
+                const unreadCount = relevantDocs.length;
                 setUnreadCounts(prev => ({ ...prev, [chatOwnerUid]: unreadCount }));
                 
-                // Show toast for new messages if the chat is not active
                 const shouldShowToast = isOwnChat ? (activeChatStudentUid !== chatOwnerUid) : (userProfile.role === 'admin' && activeChatStudentUid !== chatOwnerUid);
 
                 if (shouldShowToast) {
                     newMessages.forEach(message => {
-                        // For a student, only show toast for admin messages
-                        // For an admin, only show toast for student messages
                         const isFromOtherParty = isOwnChat ? message.senderUid !== userProfile.uid : message.senderUid === chatOwnerUid;
 
                         if (isFromOtherParty) {
@@ -86,13 +80,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         };
 
 
-        // Logic for admin: subscribe to all student chats
         if (userProfile.role === 'admin') {
             students.forEach(student => {
                 setupSubscription(student.uid, false);
             });
         }
-        // Logic for student: subscribe to their own chat
         else if (userProfile.role === 'viewer') {
             setupSubscription(userProfile.uid, true);
         }
@@ -102,34 +94,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         };
     }, [firestore, userProfile, students, toast, activeChatStudentUid]);
     
-    // Effect to mark messages as read when a chat becomes active
     useEffect(() => {
         if (firestore && activeChatStudentUid && userProfile) {
             const markAsRead = async () => {
-                let q: Query;
                 const messagesRef = collection(firestore, 'chats', activeChatStudentUid, 'messages');
                 
-                // Build the query to find unread messages sent by the *other* party
-                if (userProfile.role === 'admin') {
-                    // Admin is viewing a student's chat, mark messages sent by the student as read
-                    q = query(messagesRef, where('isRead', '==', false), where('senderUid', '==', activeChatStudentUid));
-                } else {
-                    // Student is viewing their own chat, mark messages sent by an admin as read
-                    q = query(messagesRef, where('isRead', '==', false), where('senderUid', '!=', userProfile.uid));
-                }
+                // This query now requires a composite index. We will simplify it.
+                // Original failing query: query(messagesRef, where('isRead', '==', false), where('senderUid', '!=', userProfile.uid));
+                
+                const unreadQuery = query(messagesRef, where('isRead', '==', false));
 
                 try {
-                    const snapshot = await getDocs(q);
+                    const snapshot = await getDocs(unreadQuery);
                     if (snapshot.empty) return;
     
                     const batch = writeBatch(firestore);
                     snapshot.docs.forEach(doc => {
-                        batch.update(doc.ref, { isRead: true });
+                        const message = doc.data();
+                        const sentByOtherParty = userProfile.role === 'admin'
+                            ? message.senderUid === activeChatStudentUid // Admin viewing student chat
+                            : message.senderUid !== userProfile.uid;    // Student viewing their own chat
+
+                        if (sentByOtherParty) {
+                           batch.update(doc.ref, { isRead: true });
+                        }
                     });
                     await batch.commit();
                 } catch (error) {
-                    // Don't emit a global error here, just log it. A failed write is less critical.
-                    // This might fail if an index is needed for the multi-field query.
                     console.error(`Failed to mark messages as read for chat ${activeChatStudentUid}:`, error);
                 }
             };
