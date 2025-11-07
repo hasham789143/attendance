@@ -1,10 +1,10 @@
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // WARNING: These rules are insecure and grant open access to your entire database.
-    // Any user can read, write, and delete any data.
-    // This is not recommended for production applications.
+    // Allow all read and write access to the entire database.
+    // WARNING: This is insecure and not recommended for production.
     match /{document=**} {
       allow read, write: if true;
     }
