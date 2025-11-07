@@ -37,30 +37,46 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         const setupSubscription = (chatOwnerUid: string, isOwnChat: boolean) => {
              const messagesRef = collection(firestore, 'chats', chatOwnerUid, 'messages');
-             let q: Query<DocumentData>;
+             const q = query(messagesRef, where('isRead', '==', false));
 
-            if (isOwnChat) {
-                // A user looking at their own chat only needs to count messages sent by others (admin)
-                q = query(messagesRef, where('isRead', '==', false), where('senderUid', '!=', userProfile.uid));
-            } else {
-                // An admin looking at a student's chat only needs to count messages sent by that student
-                q = query(messagesRef, where('isRead', '==', false), where('senderUid', '==', chatOwnerUid));
-            }
 
             const unsubscribe = onSnapshot(q, snapshot => {
-                setUnreadCounts(prev => ({ ...prev, [chatOwnerUid]: snapshot.size }));
+                let unreadCount = 0;
+                const newMessages = snapshot.docChanges().filter(change => change.type === 'added').map(change => change.doc.data());
 
-                 // Show toast for new messages for a student if their chat is not active
-                if (isOwnChat && snapshot.docChanges().some(change => change.type === 'added') && activeChatStudentUid !== chatOwnerUid) {
-                    snapshot.docChanges().forEach(change => {
-                         if (change.type === 'added') {
-                             const message = change.doc.data();
-                             toast({
+                snapshot.forEach(doc => {
+                    const message = doc.data();
+                    if (isOwnChat) {
+                        // A user looking at their own chat only counts messages from others
+                        if (message.senderUid !== userProfile.uid) {
+                            unreadCount++;
+                        }
+                    } else {
+                        // An admin looking at a student's chat only counts messages from that student
+                        if (message.senderUid === chatOwnerUid) {
+                            unreadCount++;
+                        }
+                    }
+                });
+
+                setUnreadCounts(prev => ({ ...prev, [chatOwnerUid]: unreadCount }));
+                
+                // Show toast for new messages if the chat is not active
+                const shouldShowToast = isOwnChat ? (activeChatStudentUid !== chatOwnerUid) : (userProfile.role === 'admin' && activeChatStudentUid !== chatOwnerUid);
+
+                if (shouldShowToast) {
+                    newMessages.forEach(message => {
+                        // For a student, only show toast for admin messages
+                        // For an admin, only show toast for student messages
+                        const isFromOtherParty = isOwnChat ? message.senderUid !== userProfile.uid : message.senderUid === chatOwnerUid;
+
+                        if (isFromOtherParty) {
+                            toast({
                                 title: `New message from ${message.senderName}`,
                                 description: message.text,
-                             });
-                         }
-                    })
+                            });
+                        }
+                    });
                 }
             },
             (error) => {
@@ -113,6 +129,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     await batch.commit();
                 } catch (error) {
                     // Don't emit a global error here, just log it. A failed write is less critical.
+                    // This might fail if an index is needed for the multi-field query.
                     console.error(`Failed to mark messages as read for chat ${activeChatStudentUid}:`, error);
                 }
             };
